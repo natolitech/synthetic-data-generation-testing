@@ -1,0 +1,333 @@
+# Data Domain Reference
+
+Field-level generation rules, realistic value pools, and distribution guidance for each
+supported domain. Read only the sections relevant to the current request.
+
+## Table of Contents
+
+1. [Clinical / EHR (Epic, Cerner, etc.)](#clinical--ehr)
+2. [Student Records / SIS (FERPA-protected)](#student-records--sis)
+3. [Identity & Access Management (IAM)](#identity--access-management)
+4. [Human Resources / Payroll](#human-resources--payroll)
+5. [Research Data](#research-data)
+6. [Financial / Billing](#financial--billing)
+7. [Cross-Domain: Shared Field Rules](#cross-domain-shared-field-rules)
+
+---
+
+## Clinical / EHR
+
+Target systems: Epic, Cerner, Allscripts, custom clinical apps, FHIR APIs.
+
+### Patient Demographics
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| patient_id / MRN | Sequential with prefix (e.g., MRN-2240001). 7-10 digits. | Include one duplicate MRN scenario for merge testing |
+| first_name | Faker + 10% international characters | O'Brien, María, Sœren, hyphenated |
+| last_name | Faker + diverse pool | García-López, van der Berg, Al-Rashid |
+| dob | Weighted: 5% pediatric (<18), 40% 18-45, 35% 45-65, 20% 65+ | Feb 29 births, centenarians, future dates (error case) |
+| sex_at_birth | M/F/Unknown, weighted ~49/49/2 | Include "Unknown" and NULL |
+| gender_identity | Male/Female/Non-binary/Other/Prefer not to say | ~5% non-binary/other/prefer not to say |
+| race | White/Black/Asian/AIAN/NHPI/Two+/Unknown | Follow approximate US census distribution |
+| ethnicity | Hispanic or Latino / Not Hispanic or Latino / Unknown | ~18% Hispanic |
+| ssn | 987-65-xxxx range only | Include 2-3 NULLs (patients without SSN) |
+| address | Faker US addresses | PO Box, APO, apartment/suite numbers |
+| phone | 555-01xx range | Include international format, NULL |
+| email | @example.com / @example.org | NULL for ~20% (elderly patients often lack email) |
+| preferred_language | English (70%), Spanish (15%), Mandarin (5%), Other (10%) | Include less common: Tagalog, Arabic, ASL notation |
+| marital_status | Single/Married/Divorced/Widowed/Separated/Unknown | Distribution age-appropriate |
+| deceased_flag | ~3% TRUE for general population sets | Include date_of_death when TRUE |
+
+### Encounters / Visits
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| encounter_id | UUID or sequential with prefix | |
+| patient_id | FK → patients table | Include one patient with 50+ encounters |
+| encounter_type | Inpatient/Outpatient/ED/Telehealth/Observation | Weight: 60% outpatient, 15% ED, 10% inpatient, 10% telehealth, 5% observation |
+| admit_datetime | Realistic clustering: more weekday AM, fewer holidays | Spans across midnight, multi-day stays |
+| discharge_datetime | admit + realistic LOS by type | NULL for active encounters |
+| department | Cardiology, Oncology, Primary Care, ED, Surgery, OB/GYN, Psychiatry, Pediatrics | |
+| attending_provider_id | FK → providers table | Ensure providers match department specialty |
+| disposition | Discharged Home / Transfer / AMA / Expired | ~1% AMA, ~0.5% expired for inpatient |
+
+### Diagnoses
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| diagnosis_id | Sequential | |
+| encounter_id | FK → encounters | Some encounters with 10+ diagnoses |
+| icd10_code | Real ICD-10 format, clinically plausible for patient demographics | |
+| description | Matching description for the ICD-10 code | |
+| dx_type | Principal / Secondary / Admitting | One principal per encounter, multiple secondary |
+| onset_date | Before or on encounter date | NULL for ~20% |
+
+**Plausible ICD-10 pools by category:**
+- Diabetes: E11.9, E11.65, E11.21, E11.40
+- Hypertension: I10, I11.9, I12.9, I13.10
+- Heart disease: I25.10, I48.91, I50.9, I21.09
+- Respiratory: J06.9, J18.9, J44.1, J45.20
+- Mental health: F32.1, F41.1, F17.210, F10.20
+- Musculoskeletal: M54.5, M79.3, M17.11, M25.511
+- Pregnancy: O80, O99.019, O24.410, Z33.1 (only assign to females age 14-50)
+
+### Medications
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| medication_id | Sequential | |
+| patient_id | FK → patients | Polypharmacy: some patients with 15+ meds |
+| drug_name | Real generic drug names, plausible for diagnoses | |
+| ndc_code | Realistic format (5-4-2) but fictional numbers | |
+| sig | Realistic dosing: "Take 1 tablet by mouth daily" | Complex: "Take 2 tablets PO BID with food x 14 days" |
+| prescriber_id | FK → providers | |
+| start_date | Within 2 years of encounter dates | |
+| end_date | NULL for active, date for discontinued | ~30% discontinued |
+| status | Active / Discontinued / On Hold | |
+
+**Common drug pools:**
+- Diabetes: metformin, glipizide, insulin glargine, sitagliptin
+- Hypertension: lisinopril, amlodipine, losartan, metoprolol, HCTZ
+- Cardiac: atorvastatin, aspirin, clopidogrel, warfarin, apixaban
+- Psych: sertraline, fluoxetine, alprazolam, quetiapine, bupropion
+- Pain: acetaminophen, ibuprofen, gabapentin, tramadol
+- Antibiotics: amoxicillin, azithromycin, ciprofloxacin, doxycycline
+
+### Lab Results
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| lab_id | Sequential | |
+| encounter_id | FK → encounters | |
+| loinc_code | Real LOINC codes for common labs | |
+| test_name | Matching name | |
+| value | Within physiological range, ~10% abnormal | Critical values (~1%), NULL (~5% pending) |
+| unit | Matching unit for the test | |
+| reference_range | Appropriate for the test | |
+| abnormal_flag | L/H/LL/HH/N | Consistent with value vs reference range |
+| result_datetime | During or shortly after encounter | |
+
+**Common lab panels:**
+- BMP: Na (136-145), K (3.5-5.0), Cl (98-106), CO2 (23-29), BUN (7-20), Cr (0.6-1.2), Glucose (70-100)
+- CBC: WBC (4.5-11.0), RBC (4.2-5.9), Hgb (12.0-17.5), Hct (36-51), Plt (150-400)
+- Lipid: Total Chol (125-200), LDL (0-100), HDL (40-60), Trig (0-150)
+- A1C: 4.0-6.0 normal, 6.5+ diabetic
+- TSH: 0.4-4.0
+
+---
+
+## Student Records / SIS
+
+Target systems: Banner, PeopleSoft, Workday Student, custom portals. FERPA-protected.
+
+### Student Demographics
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| student_id | SYN- prefix + 6-8 digits | |
+| university_id | Fictional format matching target system | |
+| first_name / last_name | Same name rules as clinical | International students: ~30% non-Western names |
+| dob | Weight toward 17-25 for undergrad, 22-40 for grad | Non-traditional students: age 40+ (~5%) |
+| email | firstname.lastname@test.invalid | |
+| phone | 555-01xx | International format for ~15% |
+| citizenship | US (65%), Permanent Resident (5%), International (30%) | |
+| visa_type | NULL for US citizens; F-1, J-1, H-1B for international | |
+| ferpa_restriction | TRUE for ~3% | |
+| address_type | Local / Permanent / Billing | Multiple addresses per student |
+
+### Enrollment / Courses
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| enrollment_id | Sequential | |
+| student_id | FK → students | Include one student with 0 courses (leave of absence) |
+| course_id | Dept prefix + number: CS 101, BIOL 234 | Cross-listed courses |
+| section | 01, 02, L1 (lab) | |
+| term | Fall 2024, Winter 2025, Spring 2025 | Summer terms |
+| credits | 1-5, weighted toward 3-4 | 0-credit research, 1-credit seminars |
+| grade | A through F, W, I, P/NP, IP | ~3% Incomplete, ~5% Withdraw |
+| instructor_id | FK → faculty | |
+| enrollment_status | Enrolled / Dropped / Waitlisted / Completed | |
+
+### Financial Aid
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| aid_id | Sequential | |
+| student_id | FK → students | |
+| aid_type | Grant / Scholarship / Loan / Work-Study | |
+| source | Federal / State / Institutional / Private | |
+| amount | $500 - $45,000, type-appropriate | Edge: exactly $0 (declined award) |
+| academic_year | 2024-2025 | |
+| status | Offered / Accepted / Declined / Disbursed | |
+| efc | $0 - $100,000 | $0 for Pell-eligible |
+
+---
+
+## Identity & Access Management
+
+Target systems: Active Directory, Entra ID, SailPoint, CyberArk, LDAP.
+
+### User Accounts
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| user_id / sAMAccountName | firstname.lastname or f+lastname pattern | Collisions: jsmith, jsmith2, jsmith3 |
+| dn | CN=First Last,OU=Department,DC=example,DC=edu | Nested OUs |
+| upn | user@example.edu | |
+| employee_id | FK → HR if applicable | NULL for contractor accounts |
+| account_status | Active / Disabled / Locked / Expired | ~5% disabled, ~2% locked |
+| created_date | Realistic hire/enrollment date | |
+| last_logon | Within last 90 days for active, NULL for stale | ~10% stale (>180 days) |
+| password_last_set | Within password policy window | Expired passwords |
+| member_of | List of group DNs | Nested groups, 1 user with 50+ groups |
+| account_type | Employee / Student / Contractor / Service / Admin | ~2% service accounts, ~1% admin |
+
+### Group Memberships
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| group_name | Department-Role pattern: IT-SecurityAnalysts, MED-Physicians | |
+| group_dn | CN=GroupName,OU=Groups,DC=example,DC=edu | |
+| group_type | Security / Distribution | |
+| member_count | 1-500, power-law distribution | Empty groups, groups with 1000+ members |
+| nested_in | Parent group DN | 3+ levels of nesting |
+| owner | user_id of group owner | NULL for orphaned groups |
+
+### Access Entitlements / Roles
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| entitlement_id | Sequential | |
+| user_id | FK → users | Users with 30+ entitlements (over-provisioned) |
+| application | Epic, Banner, Workday, Box, ServiceNow | |
+| role | App-specific role names | |
+| provisioned_date | Near account creation or role change | |
+| last_used | Within 90 days for active | ~15% never used |
+| certification_status | Certified / Pending / Revoked | |
+| risk_level | Low / Medium / High / Critical | |
+
+---
+
+## Human Resources / Payroll
+
+### Employee Records
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| employee_id | EMP- prefix + 6 digits | |
+| first_name / last_name | Standard name rules | |
+| ssn | 987-65-xxxx range | |
+| dob | Age 18-75, weighted toward 25-55 | |
+| hire_date | Within last 30 years | Future hire dates (pre-boarding) |
+| termination_date | NULL for active | ~15% terminated |
+| department | Realistic department names | |
+| job_title | Realistic titles for the department | |
+| pay_grade | Numeric or alpha scale | |
+| salary | $30,000-$500,000, title-appropriate | Hourly employees: $15-$75/hr |
+| manager_id | FK → employees | CEO has NULL manager; self-referencing hierarchy |
+| flsa_status | Exempt / Non-Exempt | |
+| benefits_eligible | TRUE / FALSE | Part-time often FALSE |
+| emergency_contact | Faker-generated name + 555-01xx phone | NULL for ~5% |
+
+---
+
+## Research Data
+
+### Research Subjects (De-identified)
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| subject_id | SUBJ- prefix + UUID | |
+| study_id | FK → studies table | |
+| cohort | Control / Treatment / Arm-A / Arm-B | |
+| enrollment_date | Within study period | |
+| age_at_enrollment | Integer, study-protocol-appropriate | |
+| sex | M / F / Intersex | Per study protocol |
+| race_ethnicity | Multi-select, realistic distribution | |
+| consent_status | Consented / Withdrawn / Screen-Failed | ~5% withdrawn |
+| site_id | Multi-site studies | |
+
+### Study Metadata
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| study_id | IRB- prefix + year + sequence | |
+| pi_name | Faker name | |
+| title | Realistic research title | |
+| irb_status | Approved / Pending / Suspended / Closed | |
+| funding_source | NIH / NSF / DoD / Industry / Internal | |
+| data_classification | Public / Controlled / Restricted | CUI-marked for DoD-funded |
+| start_date | Within last 5 years | |
+| end_date | NULL for active studies | |
+
+---
+
+## Financial / Billing
+
+### Claims / Charges
+
+| Field | Generation Rule | Edge Cases |
+|-------|----------------|------------|
+| claim_id | CLM- prefix + sequence | |
+| patient_id | FK → patients | |
+| encounter_id | FK → encounters | |
+| cpt_code | Real CPT format, plausible for encounter type | E/M codes: 99213, 99214, 99215, 99223, 99232 |
+| icd10_pointer | FK → diagnoses for this encounter | |
+| charge_amount | $50-$50,000, procedure-appropriate | |
+| payer_id | FK → payers table | Self-pay patients |
+| insurance_plan | Realistic plan names | |
+| member_id | Fictional format | |
+| group_number | Fictional | |
+| adjudication_status | Pending / Paid / Denied / Appealed | ~10% denied |
+| allowed_amount | ≤ charge_amount | |
+| patient_responsibility | Copay + coinsurance + deductible | |
+
+---
+
+## Cross-Domain: Shared Field Rules
+
+These rules apply across all domains and override domain-specific rules where they conflict.
+
+### Name Generation
+```python
+# Always include this diversity mix:
+# - 70% standard Anglo names (Faker default)
+# - 10% Hispanic/Latino names
+# - 10% East Asian names
+# - 5% South Asian names
+# - 5% other (Arabic, African, Eastern European)
+# Within each group, include hyphenated and multi-part surnames
+```
+
+### Timestamp Generation
+```python
+# General rules for all datetime fields:
+# - Use timezone-aware datetimes (UTC or America/Chicago)
+# - Business hours clustering for administrative events
+# - 24/7 distribution for clinical events
+# - Include DST transition dates as edge cases
+# - Never generate exactly midnight unless intentional
+```
+
+### NULL Distribution
+```python
+# By field criticality:
+# - Required fields (IDs, names): 0% NULL
+# - Important fields (dates, codes): 2-5% NULL
+# - Optional fields (email, phone, notes): 10-20% NULL
+# - Rarely-populated fields (fax, middle_name): 30-50% NULL
+```
+
+### Unicode & Special Characters
+```python
+# Stress-test names to include at minimum:
+# - Apostrophes: O'Brien, D'Angelo
+# - Hyphens: García-López, Smith-Jones
+# - Diacritics: Müller, Björk, Señorita, Čapek
+# - Spaces in surnames: van der Berg, de la Cruz, bin Abdullah
+# - CJK characters: 田中太郎, 王小明 (if system claims Unicode support)
+# - Very long names: 40+ characters
+# - Very short names: single character given name (e.g., "J")
+```
