@@ -42,7 +42,19 @@ relationships, and edge cases developers need — with zero compliance risk.
 
 ### Step 1 — Understand the Request
 
-Ask the developer (or infer from context):
+**First, check for a schema directory.** Look for schema files in the project before asking
+questions. Common locations:
+
+```
+schema/          db/schema/        database/schema/
+migrations/      ddl/              sql/
+db/migrations/   prisma/schema/    *.sql (project root)
+```
+
+If schema files exist, **go directly to the Schema File Workflow below** — no need to ask
+for schema details.
+
+If no schema files exist, ask the developer:
 
 - **Domain**: What system is this for? (clinical/EHR, student records, HR, identity/IAM,
   research, financial, or custom)
@@ -58,6 +70,71 @@ Ask the developer (or infer from context):
 
 If the developer just says "I need test data for the patient table," that's enough to start.
 Use sensible defaults and let them refine.
+
+---
+
+## Schema File Workflow
+
+When a project has a `schema/` directory (or equivalent), use this workflow instead of the
+manual generation steps below.
+
+### Step A — Discover the Schema
+
+```bash
+python scripts/generate_from_schema.py <schema_dir_or_file> --list-tables
+```
+
+This prints every detected table, its primary key, and any foreign key relationships. Share
+this list with the developer to confirm the scope before generating.
+
+### Step B — Generate Synthetic Data
+
+```bash
+# Generate 100 rows per table, CSV output (default)
+python scripts/generate_from_schema.py schema/
+
+# Specify rows, seed, and output format
+python scripts/generate_from_schema.py schema/ --rows 500 --seed 42 --format csv --output ./synthetic/
+
+# JSON format for API mocking
+python scripts/generate_from_schema.py schema/ --format json --output ./test_fixtures/
+
+# SQL INSERT for seeding a database directly
+python scripts/generate_from_schema.py schema/ --format sql --output ./seed_data/
+
+# Only generate specific tables
+python scripts/generate_from_schema.py schema/ --tables patients encounters --rows 200
+
+# Generate and validate in one step
+python scripts/generate_from_schema.py schema/ --rows 100 --validate
+```
+
+The script automatically:
+- Parses all `CREATE TABLE` statements across one or multiple files
+- Infers generators from column names (e.g., `first_name` → `fake.first_name()`,
+  `email` → safe `@example.com` address, `ssn` → `987-65-xxxx`)
+- Generates parent tables before child tables so foreign keys resolve correctly
+- Outputs one file per table in the requested format
+- Optionally validates output for accidental PII/PHI leakage
+
+### Step C — Validate
+
+```bash
+python scripts/validate_synthetic.py <output_dir>
+```
+
+Exit codes: `0` = clean, `1` = warnings (review), `2` = critical (do not use).
+
+### Step D — Deliver
+
+Tell the developer:
+- What tables were generated and how many rows each contains
+- The seed used (for reproducibility)
+- Any columns where the generator fell back to a type-based default (not semantic)
+  so they can verify those look right
+- The output directory path
+
+---
 
 ### Step 2 — Select a Domain Profile
 

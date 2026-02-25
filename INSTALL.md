@@ -38,14 +38,32 @@ Once installed, developers invoke the skill naturally in Claude Code:
 > I need fake Active Directory user accounts with group memberships for testing SailPoint
 
 > Build me a Python script that generates synthetic student enrollment data I can run repeatedly
+
+> Generate synthetic data to populate our database from the schema/ directory
 ```
 
 The skill will:
-1. Ask clarifying questions about schema, volume, and format
-2. Consult domain-specific rules for realistic value generation
-3. Generate data or a reusable generator script
-4. Run validation to check for accidental PII/PHI leakage
-5. Deliver with a clear "all data is synthetic" attestation
+1. Check for a `schema/` directory and auto-detect tables if one exists
+2. If no schema is present, ask clarifying questions about domain, volume, and format
+3. Consult domain-specific rules for realistic value generation
+4. Generate data or run `generate_from_schema.py` directly
+5. Run validation to check for accidental PII/PHI leakage
+6. Deliver with a clear "all data is synthetic" attestation
+
+### Schema-Driven Generation (CLI)
+
+If your project has a `schema/` directory, the skill can generate data directly:
+
+```bash
+# See what tables are in your schema
+python scripts/generate_from_schema.py schema/ --list-tables
+
+# Generate 100 rows per table as CSV
+python scripts/generate_from_schema.py schema/
+
+# Generate 500 rows, SQL INSERT format, with validation
+python scripts/generate_from_schema.py schema/ --rows 500 --format sql --validate --output ./seed_data/
+```
 
 ### What's Included
 
@@ -56,6 +74,7 @@ synth-data-gen/
 │   ├── data-domains.md                   # Field rules for clinical, student, IAM, HR, research, financial
 │   └── format-templates.md               # FHIR, HL7, SQL, CSV, JSON, Parquet templates
 ├── scripts/
+│   ├── generate_from_schema.py           # Schema-driven generator (reads DDL, outputs synthetic data)
 │   ├── validate_synthetic.py             # Checks output for real-world data leakage
 │   └── example_patient_generator.py      # Working example generator
 └── assets/                               # (reserved for future templates)
