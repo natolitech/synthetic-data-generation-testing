@@ -110,6 +110,13 @@ DEPARTMENTS = [
     "Legal", "Operations", "IT", "Research", "Customer Support",
 ]
 
+ENCOUNTER_TYPES = ["Outpatient", "Inpatient", "ED", "Telehealth", "Observation", "Urgent Care"]
+CLINICAL_DEPARTMENTS = ["Cardiology", "Primary Care", "Emergency", "Surgery", "OB/GYN",
+                        "Psychiatry", "Pediatrics", "Orthopedics", "Neurology", "Oncology"]
+ADJUDICATION_STATUSES = ["Paid", "Pending", "Denied", "Appealed", "Voided"]
+ACCOUNT_STATUSES = ["Active", "Disabled", "Locked", "Expired"]
+ENROLLMENT_STATUSES = ["Enrolled", "Graduated", "Withdrawn", "Leave of Absence"]
+
 
 # ---------------------------------------------------------------------------
 # Schema parsing
@@ -302,7 +309,7 @@ def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) ->
         return f"{SAFE_SSN_PREFIX}-{random.randint(0, 9999):04d}"
     if re.search(r"^mrn$|medical.?record", name):
         return f"MRN-{2240000 + row_idx}"
-    if re.search(r"^npi$", name):
+    if re.search(r"npi", name):
         return f"9{random.randint(100000000, 999999999)}"
 
     # Location
@@ -384,8 +391,10 @@ def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) ->
     if re.search(r"medication|drug.?name|med.?name", name):
         return random.choice(MEDICATIONS)
 
-    # HR
-    if re.search(r"^department$|^dept$", name):
+    # Clinical
+    if re.search(r"encounter.?type", name):
+        return random.choices(ENCOUNTER_TYPES, weights=[0.60, 0.10, 0.15, 0.10, 0.04, 0.01])[0]
+    if re.search(r"^department$|^dept$|clinical.?dept|clinical.?department", name):
         return random.choice(DEPARTMENTS)
     if re.search(r"job.?title|^position$", name) and bt in ("varchar", "text", "char", "nvarchar", "string"):
         return fake.job()

@@ -81,6 +81,8 @@ DEPARTMENTS = [
     "Legal", "Operations", "IT", "Research", "Customer Support",
 ]
 
+ENCOUNTER_TYPES = ["Outpatient", "Inpatient", "ED", "Telehealth", "Observation", "Urgent Care"]
+
 EXAMPLE_DDL = """\
 CREATE TABLE patients (
     patient_id    VARCHAR(20)  PRIMARY KEY,
@@ -313,7 +315,7 @@ def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) ->
         return safe_ssn()
     if re.search(r"^mrn$|medical.?record", name):
         return f"MRN-{2240000 + row_idx}"
-    if re.search(r"^npi$", name):
+    if re.search(r"npi", name):
         return f"9{random.randint(100000000, 999999999)}"
 
     # Location
@@ -394,6 +396,10 @@ def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) ->
         return random.choice(LOINC_POOL)
     if re.search(r"medication|drug.?name|med.?name", name):
         return random.choice(MEDICATIONS)
+
+    # Clinical
+    if re.search(r"encounter.?type", name):
+        return random.choices(ENCOUNTER_TYPES, weights=[0.60, 0.10, 0.15, 0.10, 0.04, 0.01])[0]
 
     # HR
     if re.search(r"^department$|^dept$", name):
