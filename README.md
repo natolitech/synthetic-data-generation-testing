@@ -4,15 +4,17 @@ Generate realistic but **completely fictional** data for development, testing, Q
 
 ## Overview
 
-This project provides three ways to generate synthetic data:
+This project provides four ways to generate synthetic data:
 
 | Tool | What it does |
 |------|-------------|
+| `run.sh` | **Start here** — one command to run everything (apps, CLIs, validation) |
 | `demo_app.py` | Interactive Streamlit UI — pick a built-in domain and generate data in your browser |
 | `schema_app.py` | Interactive Streamlit UI — paste or upload your own SQL schema and generate matching data |
 | `generate_from_schema.py` | CLI script — point it at a `schema/` directory and it generates data for every table automatically |
+| `clinical_notes.py` | CLI — synthetic physician notes & dictation transcripts with embedded (safe-range) PHI and ground-truth PHI spans |
 
-All three share the same safety guarantees and semantic column mapping. The Claude Code skill (`synth-data-gen/`) wraps these tools and invokes them automatically when you ask for test data in Claude Code.
+All tools share the same safety guarantees and semantic column mapping. The Claude Code skill (`synth-data-gen/`) wraps these tools and invokes them automatically when you ask for test data in Claude Code. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
@@ -44,6 +46,19 @@ Run `validate_synthetic.py` on any generated file to confirm nothing leaked outs
 pip install -r requirements.txt
 # requirements: faker>=25, pandas>=2, streamlit>=1.30
 ```
+
+### Option 0 — Use `run.sh` (recommended)
+
+```bash
+./run.sh demo      # domain-based Streamlit app  → http://localhost:8501
+./run.sh schema    # schema-driven Streamlit app → http://localhost:8502
+./run.sh notes -n 50 --validate --ground-truth   # clinical notes / dictations
+./run.sh gen schema/ --rows 200 --validate       # schema-driven CLI
+./run.sh validate synthetic_output/              # PII/PHI validation
+./run.sh doctor     # environment check
+```
+
+`run.sh` auto-detects a Python interpreter with the required dependencies (override with `PYTHON=`), always runs from the repo root, and passes extra flags straight through to the underlying tool.
 
 ### Option 1 — Use the domain-based demo app
 
@@ -81,6 +96,36 @@ python synth-data-gen/scripts/generate_from_schema.py schema/ \
 
 Output is written to `./synthetic_output/` (one file per table) unless `--output` is specified.
 
+### Option 4 — Generate clinical notes & dictation transcripts (CLI)
+
+```bash
+# 25 notes — blend of 6 note types, ~35% rendered as raw dictation
+python clinical_notes.py --validate
+
+# 50 pure dictation transcripts, one .txt per note + PHI ground truth
+python clinical_notes.py -n 50 -t dictation_transcript -f txt --ground-truth
+
+# Specific note type, JSON with embedded PHI span annotations
+python clinical_notes.py -n 10 -t discharge_summary -f json --ground-truth
+```
+
+Note types: `progress_note`, `history_physical`, `discharge_summary`, `ed_note`,
+`telehealth_note`, `procedure_note` (or `mix`). Dictation transcripts include
+realistic ASR artifacts — spoken punctuation ("period", "comma", "colon"),
+"new paragraph" commands, disfluencies, `[inaudible]` markers, and
+mid-sentence corrections.
+
+**Ground-truth PHI spans.** Every note can be annotated with the exact character
+offsets of each PHI instance (`PATIENT`, `MRN`, `DOB`, `SSN`, `PHONE`, `ADDRESS`,
+`PROVIDER`, `NPI`, `DATE`, `ENCOUNTER`, `CONTACT`, `ICD10`). Use them to score
+de-identification pipelines for recall/precision — see
+`clinical_notes_ground_truth.json` written by `--ground-truth`.
+
+Schema-driven tools also pick up note columns automatically: `note_text`,
+`dictation_text`, `progress_note`, `hpi`, `chief_complaint`, `note_type`,
+`author`, `transcription_status` are all mapped semantically in
+`schema_app.py` and `generate_from_schema.py`.
+
 ---
 
 ## The Two Streamlit Apps
@@ -94,7 +139,7 @@ Use when you want to generate data for a **standard enterprise domain** without 
 
 | Domain | Tables |
 |--------|--------|
-| Clinical / EHR | Patients, Encounters, Diagnoses, Lab Results |
+| Clinical / EHR | Patients, Encounters, Diagnoses, Lab Results, Clinical Notes / Dictations |
 | Student Records | Students, Course Enrollment |
 | Human Resources | Employees |
 | Identity & Access | User Accounts, Entitlements |
@@ -179,6 +224,25 @@ python example_patient_generator.py [options]
   --validate       Run validation after generation
 ```
 
+### clinical_notes.py
+
+Generates synthetic physician notes and dictation transcripts with embedded safe-range PHI.
+
+```
+python clinical_notes.py [options]
+
+  -n, --rows N          Number of notes (default: 25)
+  -s, --seed N          Random seed (default: 42)
+  -f, --format          csv | json | sql | txt  (default: csv; txt = one file per note)
+  -t, --type            mix | progress_note | history_physical | discharge_summary |
+                        ed_note | telehealth_note | procedure_note | dictation_transcript
+  --dictation-ratio F   Fraction rendered as raw dictation, 0.0-1.0 (default: 0.35)
+  -o, --output          Output file or directory (default: ./synthetic_output)
+  --ground-truth        Write clinical_notes_ground_truth.json with PHI spans
+  --validate            Run PII/PHI validation after generation
+  --list-types          Print note types and exit
+```
+
 ### validate_synthetic.py
 
 Checks generated files for PII/PHI leakage and data quality.
@@ -254,16 +318,19 @@ Either way, the skill validates all output before delivering it and states clear
 ```
 synthetic-data-generation-testing/
 │
+├── run.sh                          # Single entry point for all tools
 ├── demo_app.py                     # Streamlit UI — domain-based generation (6 built-in domains)
 ├── schema_app.py                   # Streamlit UI — schema-driven generation (paste/upload DDL)
+├── clinical_notes.py               # CLI — clinical notes & dictation transcripts with PHI spans
 ├── example_patient_generator.py    # CLI — standalone patient record generator (17 fields)
 ├── validate_synthetic.py           # CLI — PII/PHI validator for generated files
 ├── requirements.txt                # faker, pandas, streamlit
+├── PLAN.md                         # Improvement roadmap
 │
 ├── schema/                         # Example SQL schemas for testing
 │   └── example.sql                 # patients + encounters with FK relationship
 │
-├── data-domains.md                 # Field-level generation rules for all 6 domains
+├── data-domains.md                 # Field-level generation rules for all 6 domains + notes
 ├── format-templates.md             # Output format specs: FHIR R4, HL7 v2.x, SQL, CSV, JSON, Parquet
 ├── INSTALL.md                      # Skill installation and deployment guide
 │
@@ -274,6 +341,7 @@ synthetic-data-generation-testing/
     │   └── format-templates.md     # Format specifications (read by Claude for FHIR/HL7 output)
     └── scripts/
         ├── generate_from_schema.py # Schema-driven generator — reads DDL, outputs synthetic data
+        ├── clinical_notes.py       # Clinical notes & dictation generator
         ├── validate_synthetic.py   # PII/PHI validator
         └── example_patient_generator.py  # Example generator script
 ```

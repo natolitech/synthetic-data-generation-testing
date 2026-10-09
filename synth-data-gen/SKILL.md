@@ -58,6 +58,9 @@ If no schema files exist, ask the developer:
 
 - **Domain**: What system is this for? (clinical/EHR, student records, HR, identity/IAM,
   research, financial, or custom)
+- **Unstructured text**: Do they need clinical notes or dictation transcripts with embedded
+  PHI? If yes, use `scripts/clinical_notes.py` (below) — it includes ground-truth PHI spans
+  for de-identification testing.
 - **Schema**: Do they have a DDL, JSON schema, CSV headers, or sample (redacted) structure?
   If they provide a production sample, **do not echo it back** — extract only the schema.
 - **Volume**: How many records? (default: 100 rows for primary tables, proportional for
@@ -124,6 +127,27 @@ python scripts/validate_synthetic.py <output_dir>
 ```
 
 Exit codes: `0` = clean, `1` = warnings (review), `2` = critical (do not use).
+
+### Step C+ — Clinical Notes / Dictations (when unstructured PHI is requested)
+
+```bash
+# Mix of 6 note types, ~35% rendered as raw dictation transcripts
+python scripts/clinical_notes.py -n 50 --validate --ground-truth
+
+# Only raw dictations, one .txt per note + PHI ground-truth sidecar
+python scripts/clinical_notes.py -n 25 -t dictation_transcript -f txt --ground-truth
+
+# Specific note type: progress_note | history_physical | discharge_summary |
+#                     ed_note | telehealth_note | procedure_note
+python scripts/clinical_notes.py -n 10 -t discharge_summary -f json
+```
+
+Notes embed safe-range PHI (names, MRN, DOB, SSN 987-65-xxxx, phones 555-01xx,
+NPI, addresses) and ship with **ground-truth PHI spans** (type + character
+offsets) so de-identification tools can be scored for recall/precision. Columns
+named `note_text`, `dictation_text`, `progress_note`, `hpi`, `chief_complaint`,
+etc. in a DDL schema are also populated automatically by
+`generate_from_schema.py`.
 
 ### Step D — Deliver
 

@@ -8,6 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 pip install -r requirements.txt
 
+# Preferred: use the run.sh entry point for everything
+./run.sh demo                          # domain-based Streamlit app (:8501)
+./run.sh schema                        # schema-driven Streamlit app (:8502)
+./run.sh notes -n 50 --validate        # clinical notes / dictations CLI
+./run.sh gen schema/ --rows 100 --validate
+./run.sh validate synthetic_output/
+./run.sh doctor                        # environment check
+
 # Run the domain-based demo app (6 built-in domains)
 streamlit run demo_app.py
 
@@ -22,6 +30,10 @@ python synth-data-gen/scripts/generate_from_schema.py schema/ --rows 100 --valid
 
 # Schema-driven CLI — SQL INSERT format for database seeding
 python synth-data-gen/scripts/generate_from_schema.py schema/ --format sql --output ./seed_data/
+
+# Clinical notes / dictation transcripts (6 note types, PHI ground-truth spans)
+python clinical_notes.py -n 50 --validate --ground-truth
+python clinical_notes.py -n 25 -t dictation_transcript -f txt
 
 # Generate patient data (standalone CLI)
 python example_patient_generator.py -n 100 -f csv
@@ -38,10 +50,12 @@ The project has three layers:
 
 **1. Standalone tools** (root directory)
 
-- `demo_app.py` — Streamlit app with six hardcoded domain generators (Clinical, Student, HR, IAM, Research, Financial). All generation logic lives here as plain functions. Supports CSV, JSON, SQL INSERT, and Parquet output. Has four output tabs: Preview, Raw Output, Validation, Statistics.
+- `demo_app.py` — Streamlit app with six hardcoded domain generators (Clinical, Student, HR, IAM, Research, Financial). All generation logic lives here as plain functions. Supports CSV, JSON, SQL INSERT, and Parquet output. Has four output tabs: Preview, Raw Output, Validation, Statistics. The Clinical domain includes notes/dictations via `clinical_notes.py` (tables with a `note_text` column get per-note expanders).
 - `schema_app.py` — Streamlit app that accepts any SQL DDL (paste or upload). Parses `CREATE TABLE` statements, maps column names to semantic generators, shows a preview of inferred generators before generation, and supports single-table or all-tables-with-FK-integrity mode. Same four output tabs.
+- `clinical_notes.py` — CLI + importable module generating synthetic physician notes (progress, H&P, discharge summary, ED, telehealth, procedure) rendered as transcribed notes or raw dictation transcripts (spoken punctuation, disfluencies, `[inaudible]`). Embeds safe-range PHI and records **ground-truth PHI spans** (type + char offsets) for de-identification scoring. `NoteBuilder` assembles segments; `generate_note()` / `generate_notes_dataframe()` / `generate_clinical_notes(n, fake)` (demo-app alias) are the public API.
 - `example_patient_generator.py` — Minimal CLI generator for the clinical patient domain. Reference implementation showing the expected script structure.
 - `validate_synthetic.py` — Multi-format PII/PHI validator. Checks SSN ranges, email domains, phone prefixes, IP ranges, NPI patterns, NULL distribution, and JSON synthetic markers.
+- `run.sh` — Entry point for all tools (`demo`, `schema`, `notes`, `gen`, `patient`, `validate`, `install-skill`, `doctor`, `update`). Auto-detects a Python with faker/pandas/streamlit (`PYTHON=` overrides).
 
 **2. Claude Code skill** (`synth-data-gen/`)
 
@@ -49,6 +63,7 @@ The project has three layers:
 - `references/data-domains.md` — Field-level generation rules for all 6 built-in domains. Claude reads this during generation to get realistic value pools and NULL rates.
 - `references/format-templates.md` — Output format specs for FHIR R4, HL7 v2.x, SQL, CSV, JSON, and Parquet. Claude reads this when FHIR or HL7 output is requested.
 - `scripts/generate_from_schema.py` — Standalone CLI script. Reads one or more DDL files, parses all `CREATE TABLE` statements, generates data in FK dependency order (parents before children), and writes one output file per table. Accepts `--rows`, `--seed`, `--format` (csv/json/sql), `--output`, `--tables`, `--validate`, `--list-tables`.
+- `scripts/clinical_notes.py` — Copy of the root notes/dictation generator (keep in sync with the root copy).
 - `scripts/validate_synthetic.py` — Copy of the root-level validator for in-skill use.
 - `scripts/example_patient_generator.py` — Copy of the root-level patient generator.
 
@@ -66,6 +81,7 @@ Both `schema_app.py` and `generate_from_schema.py` map column names to generator
 - Location: `city` → `fake.city()`, `state` → `fake.state_abbr()`, `zip/postal_code` → `fake.zipcode()`
 - Dates: `created_at` → recent datetime, `hire_date/start_date` → random past date, `end_date/termination_date` → ~60% NULL
 - Clinical: `encounter_type` → weighted clinical values, `icd10/dx_code` → ICD-10 pool, `cpt_code` → CPT pool
+- Clinical notes: `note_type` → note-type pool, `transcription_status` → status pool, `author/dictated_by/signed_by` → "Dr. First Last, MD", `dictation/transcript` → raw dictation transcript, `note_text/progress_note/discharge_summary/hpi/chief_complaint/narrative` → full transcribed note (truncated to `VARCHAR(n)` length; TEXT columns keep full note)
 - Financial: `salary/wage` → randint(35000, 250000), `amount/charge/price` → uniform(10, 5000)
 - Type fallback: `INT` → randint, `DECIMAL` → uniform, `DATE` → random date, `TIMESTAMP` → recent datetime, `VARCHAR` → `fake.word()`
 
@@ -88,6 +104,7 @@ Always run `validate_synthetic.py` against generated output before delivery.
 
 1. Add generator functions to `demo_app.py` following the existing pattern (weighted random choices, NULL injection, edge-case name injection).
 2. Add semantic column-name rules to `_generate_value()` in both `schema_app.py` and `synth-data-gen/scripts/generate_from_schema.py`.
-3. Update `synth-data-gen/references/data-domains.md` with field-level rules.
-4. For new output formats, update `synth-data-gen/references/format-templates.md`.
-5. Validate generated output with `validate_synthetic.py`.
+3. If the generator lives in a shared module (like `clinical_notes.py`), copy it into `synth-data-gen/scripts/` so the skill stays self-contained — and keep the copies in sync.
+4. Update `synth-data-gen/references/data-domains.md` (and the root `data-domains.md` copy) with field-level rules.
+5. For new output formats, update `synth-data-gen/references/format-templates.md`.
+6. Validate generated output with `validate_synthetic.py`.

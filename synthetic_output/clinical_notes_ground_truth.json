@@ -1,0 +1,1395 @@
+{
+  "_meta": {
+    "generated_by": "synth-data-gen clinical_notes",
+    "synthetic": true,
+    "description": "Ground-truth PHI spans for de-identification scoring. All data is fictional.",
+    "seed": 42,
+    "note_count": 20
+  },
+  "notes": {
+    "NOTE-000001": {
+      "note_type": "procedure_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Danielle Johnson",
+          "start": 59,
+          "end": 75
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2240521",
+          "start": 88,
+          "end": 99
+        },
+        {
+          "type": "DOB",
+          "text": "10/07/1973",
+          "start": 124,
+          "end": 134
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-80801587",
+          "start": 177,
+          "end": 189
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Jennifer Miles, MD",
+          "start": 219,
+          "end": 241
+        },
+        {
+          "type": "NPI",
+          "text": "9642621108",
+          "start": 254,
+          "end": 264
+        },
+        {
+          "type": "DATE",
+          "text": "11/14/2024",
+          "start": 298,
+          "end": 308
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Jennifer Miles, MD",
+          "start": 1017,
+          "end": 1039
+        }
+      ]
+    },
+    "NOTE-000002": {
+      "note_type": "progress_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Shane Ramirez",
+          "start": 23,
+          "end": 36
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2244555",
+          "start": 44,
+          "end": 55
+        },
+        {
+          "type": "DOB",
+          "text": "03/07/1962",
+          "start": 61,
+          "end": 71
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-28119558",
+          "start": 101,
+          "end": 113
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Melanie Munoz, MD",
+          "start": 124,
+          "end": 145
+        },
+        {
+          "type": "NPI",
+          "text": "9481469012",
+          "start": 153,
+          "end": 163
+        },
+        {
+          "type": "DATE",
+          "text": "12/16/2025",
+          "start": 178,
+          "end": 188
+        },
+        {
+          "type": "ADDRESS",
+          "text": "654 Jason Track, Curtisfurt, CT 47553",
+          "start": 198,
+          "end": 235
+        },
+        {
+          "type": "CONTACT",
+          "text": "Sean Ramirez",
+          "start": 533,
+          "end": 545
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0159",
+          "start": 549,
+          "end": 557
+        },
+        {
+          "type": "ICD10",
+          "text": "E11.9",
+          "start": 899,
+          "end": 904
+        },
+        {
+          "type": "ICD10",
+          "text": "I10",
+          "start": 971,
+          "end": 974
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Melanie Munoz, MD",
+          "start": 1177,
+          "end": 1198
+        }
+      ]
+    },
+    "NOTE-000003": {
+      "note_type": "procedure_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Jessica Herrera",
+          "start": 59,
+          "end": 74
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2248831",
+          "start": 87,
+          "end": 98
+        },
+        {
+          "type": "DOB",
+          "text": "06/17/1945",
+          "start": 123,
+          "end": 133
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-48586341",
+          "start": 176,
+          "end": 188
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Michael Santiago, MD",
+          "start": 218,
+          "end": 242
+        },
+        {
+          "type": "NPI",
+          "text": "9528853029",
+          "start": 255,
+          "end": 265
+        },
+        {
+          "type": "DATE",
+          "text": "01/10/2026",
+          "start": 299,
+          "end": 309
+        },
+        {
+          "type": "ADDRESS",
+          "text": "84959 Janet Cape Apt. 413, South Joshuastad, GA 49021",
+          "start": 338,
+          "end": 391
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Michael Santiago, MD",
+          "start": 1071,
+          "end": 1095
+        }
+      ]
+    },
+    "NOTE-000004": {
+      "note_type": "ed_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Frances Jones",
+          "start": 70,
+          "end": 83
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2242647",
+          "start": 96,
+          "end": 107
+        },
+        {
+          "type": "DOB",
+          "text": "01/19/1975",
+          "start": 132,
+          "end": 142
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-65579549",
+          "start": 183,
+          "end": 195
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Carl Gentry, MD",
+          "start": 225,
+          "end": 244
+        },
+        {
+          "type": "NPI",
+          "text": "9448059918",
+          "start": 257,
+          "end": 267
+        },
+        {
+          "type": "DATE",
+          "text": "01/06/2025",
+          "start": 301,
+          "end": 311
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-65579549",
+          "start": 649,
+          "end": 661
+        },
+        {
+          "type": "ICD10",
+          "text": "M17.11",
+          "start": 844,
+          "end": 850
+        },
+        {
+          "type": "ICD10",
+          "text": "E11.9",
+          "start": 906,
+          "end": 911
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Carl Gentry, MD",
+          "start": 1045,
+          "end": 1064
+        }
+      ]
+    },
+    "NOTE-000005": {
+      "note_type": "telehealth_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Jennifer Lewis",
+          "start": 25,
+          "end": 39
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2240965",
+          "start": 47,
+          "end": 58
+        },
+        {
+          "type": "DOB",
+          "text": "06/26/1977",
+          "start": 64,
+          "end": 74
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-69008867",
+          "start": 106,
+          "end": 118
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Eric Moore, MD",
+          "start": 129,
+          "end": 147
+        },
+        {
+          "type": "NPI",
+          "text": "9176082500",
+          "start": 155,
+          "end": 165
+        },
+        {
+          "type": "DATE",
+          "text": "03/20/2025",
+          "start": 180,
+          "end": 190
+        },
+        {
+          "type": "ADDRESS",
+          "text": "42388 Burgess Meadow Suite 532, Daviston, VI 14872",
+          "start": 200,
+          "end": 250
+        },
+        {
+          "type": "ADDRESS",
+          "text": "Daviston, VI",
+          "start": 310,
+          "end": 322
+        },
+        {
+          "type": "ICD10",
+          "text": "M17.11",
+          "start": 1029,
+          "end": 1035
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0104",
+          "start": 1238,
+          "end": 1246
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Eric Moore, MD",
+          "start": 1410,
+          "end": 1428
+        }
+      ]
+    },
+    "NOTE-000006": {
+      "note_type": "telehealth_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Candace Cruz",
+          "start": 25,
+          "end": 37
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2240242",
+          "start": 45,
+          "end": 56
+        },
+        {
+          "type": "DOB",
+          "text": "09/10/1954",
+          "start": 62,
+          "end": 72
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-64606834",
+          "start": 104,
+          "end": 116
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Jose Mason, MD",
+          "start": 127,
+          "end": 145
+        },
+        {
+          "type": "NPI",
+          "text": "9621453189",
+          "start": 153,
+          "end": 163
+        },
+        {
+          "type": "DATE",
+          "text": "07/11/2025",
+          "start": 178,
+          "end": 188
+        },
+        {
+          "type": "ADDRESS",
+          "text": "Mooretown, VA",
+          "start": 248,
+          "end": 261
+        },
+        {
+          "type": "ICD10",
+          "text": "E11.9",
+          "start": 919,
+          "end": 924
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0121",
+          "start": 1112,
+          "end": 1120
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Jose Mason, MD",
+          "start": 1284,
+          "end": 1302
+        }
+      ]
+    },
+    "NOTE-000007": {
+      "note_type": "progress_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Rita Harrell",
+          "start": 58,
+          "end": 70
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2241114",
+          "start": 83,
+          "end": 94
+        },
+        {
+          "type": "DOB",
+          "text": "11/18/1946",
+          "start": 119,
+          "end": 129
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-33046465",
+          "start": 172,
+          "end": 184
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. John Bradley, MD",
+          "start": 214,
+          "end": 234
+        },
+        {
+          "type": "NPI",
+          "text": "9711684318",
+          "start": 247,
+          "end": 257
+        },
+        {
+          "type": "DATE",
+          "text": "05/06/2025",
+          "start": 291,
+          "end": 301
+        },
+        {
+          "type": "ICD10",
+          "text": "I10",
+          "start": 1258,
+          "end": 1261
+        },
+        {
+          "type": "ICD10",
+          "text": "E11.9",
+          "start": 1340,
+          "end": 1345
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0151",
+          "start": 1603,
+          "end": 1611
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. John Bradley, MD",
+          "start": 1741,
+          "end": 1761
+        }
+      ]
+    },
+    "NOTE-000008": {
+      "note_type": "history_physical_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Jessica Cabrera",
+          "start": 63,
+          "end": 78
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2241513",
+          "start": 91,
+          "end": 102
+        },
+        {
+          "type": "DOB",
+          "text": "11/30/1981",
+          "start": 127,
+          "end": 137
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-44769201",
+          "start": 178,
+          "end": 190
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Nathaniel Lam, MD",
+          "start": 220,
+          "end": 241
+        },
+        {
+          "type": "NPI",
+          "text": "9103807155",
+          "start": 254,
+          "end": 264
+        },
+        {
+          "type": "DATE",
+          "text": "01/10/2026",
+          "start": 298,
+          "end": 308
+        },
+        {
+          "type": "PATIENT",
+          "text": "Jessica Cabrera",
+          "start": 419,
+          "end": 434
+        },
+        {
+          "type": "ICD10",
+          "text": "I48.91",
+          "start": 1254,
+          "end": 1260
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0135",
+          "start": 1540,
+          "end": 1548
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Nathaniel Lam, MD",
+          "start": 1678,
+          "end": 1699
+        }
+      ]
+    },
+    "NOTE-000009": {
+      "note_type": "procedure_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "John Brown",
+          "start": 24,
+          "end": 34
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2245729",
+          "start": 42,
+          "end": 53
+        },
+        {
+          "type": "DOB",
+          "text": "05/18/1977",
+          "start": 59,
+          "end": 69
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-25921442",
+          "start": 101,
+          "end": 113
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Todd Ryan, MD",
+          "start": 124,
+          "end": 141
+        },
+        {
+          "type": "NPI",
+          "text": "9808705238",
+          "start": 149,
+          "end": 159
+        },
+        {
+          "type": "DATE",
+          "text": "08/29/2026",
+          "start": 174,
+          "end": 184
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Todd Ryan, MD",
+          "start": 695,
+          "end": 712
+        }
+      ]
+    },
+    "NOTE-000010": {
+      "note_type": "discharge_summary_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Nicole Johnston",
+          "start": 62,
+          "end": 77
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2244174",
+          "start": 90,
+          "end": 101
+        },
+        {
+          "type": "DOB",
+          "text": "10/05/1953",
+          "start": 126,
+          "end": 136
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-72269804",
+          "start": 179,
+          "end": 191
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. James West, MD",
+          "start": 221,
+          "end": 239
+        },
+        {
+          "type": "NPI",
+          "text": "9965984448",
+          "start": 252,
+          "end": 262
+        },
+        {
+          "type": "DATE",
+          "text": "05/03/2025",
+          "start": 296,
+          "end": 306
+        },
+        {
+          "type": "ADDRESS",
+          "text": "3116 Henderson Mountain Apt. 106, Laurenville, IA 25613",
+          "start": 335,
+          "end": 390
+        },
+        {
+          "type": "DATE",
+          "text": "04/28/2025",
+          "start": 441,
+          "end": 451
+        },
+        {
+          "type": "DATE",
+          "text": "05/03/2025",
+          "start": 475,
+          "end": 485
+        },
+        {
+          "type": "ICD10",
+          "text": "J18.9",
+          "start": 526,
+          "end": 531
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "Encounter ENC-72269804",
+          "start": 788,
+          "end": 810
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0100",
+          "start": 1207,
+          "end": 1215
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. James West, MD",
+          "start": 1263,
+          "end": 1281
+        }
+      ]
+    },
+    "NOTE-000011": {
+      "note_type": "procedure_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Joshua Wright",
+          "start": 59,
+          "end": 72
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2243681",
+          "start": 85,
+          "end": 96
+        },
+        {
+          "type": "DOB",
+          "text": "07/07/1998",
+          "start": 121,
+          "end": 131
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-63771721",
+          "start": 174,
+          "end": 186
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Franklin Smith, MD",
+          "start": 216,
+          "end": 238
+        },
+        {
+          "type": "NPI",
+          "text": "9362897676",
+          "start": 251,
+          "end": 261
+        },
+        {
+          "type": "DATE",
+          "text": "10/30/2025",
+          "start": 295,
+          "end": 305
+        },
+        {
+          "type": "ADDRESS",
+          "text": "108 Tanya Terrace Apt. 267, Lewisfurt, MH 08186",
+          "start": 334,
+          "end": 381
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Franklin Smith, MD",
+          "start": 1122,
+          "end": 1144
+        }
+      ]
+    },
+    "NOTE-000012": {
+      "note_type": "telehealth_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Sara Glover",
+          "start": 25,
+          "end": 36
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2247374",
+          "start": 44,
+          "end": 55
+        },
+        {
+          "type": "DOB",
+          "text": "06/13/1968",
+          "start": 61,
+          "end": 71
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-69967677",
+          "start": 101,
+          "end": 113
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Casey Jones, MD",
+          "start": 124,
+          "end": 143
+        },
+        {
+          "type": "NPI",
+          "text": "9922286180",
+          "start": 151,
+          "end": 161
+        },
+        {
+          "type": "DATE",
+          "text": "07/28/2025",
+          "start": 176,
+          "end": 186
+        },
+        {
+          "type": "ADDRESS",
+          "text": "34309 Julie Centers Apt. 978, North Susan, CO 24857",
+          "start": 196,
+          "end": 247
+        },
+        {
+          "type": "ADDRESS",
+          "text": "North Susan, CO",
+          "start": 307,
+          "end": 322
+        },
+        {
+          "type": "CONTACT",
+          "text": "Dominique Glover",
+          "start": 775,
+          "end": 791
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0169",
+          "start": 795,
+          "end": 803
+        },
+        {
+          "type": "ICD10",
+          "text": "M17.11",
+          "start": 1216,
+          "end": 1222
+        },
+        {
+          "type": "ICD10",
+          "text": "I48.91",
+          "start": 1279,
+          "end": 1285
+        },
+        {
+          "type": "SSN",
+          "text": "987-65-4050",
+          "start": 1454,
+          "end": 1465
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Casey Jones, MD",
+          "start": 1644,
+          "end": 1663
+        }
+      ]
+    },
+    "NOTE-000013": {
+      "note_type": "procedure_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Richard David",
+          "start": 59,
+          "end": 72
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2243614",
+          "start": 85,
+          "end": 96
+        },
+        {
+          "type": "DOB",
+          "text": "02/25/1935",
+          "start": 121,
+          "end": 131
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-03895646",
+          "start": 174,
+          "end": 186
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Debbie Bryant, MD",
+          "start": 216,
+          "end": 237
+        },
+        {
+          "type": "NPI",
+          "text": "9621454127",
+          "start": 250,
+          "end": 260
+        },
+        {
+          "type": "DATE",
+          "text": "12/06/2025",
+          "start": 294,
+          "end": 304
+        },
+        {
+          "type": "ADDRESS",
+          "text": "169 Donovan Ford, Johnfurt, DC 88540",
+          "start": 333,
+          "end": 369
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Debbie Bryant, MD",
+          "start": 1110,
+          "end": 1131
+        }
+      ]
+    },
+    "NOTE-000014": {
+      "note_type": "ed_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Shari Smith",
+          "start": 70,
+          "end": 81
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2240334",
+          "start": 94,
+          "end": 105
+        },
+        {
+          "type": "DOB",
+          "text": "12/17/1938",
+          "start": 130,
+          "end": 140
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-89853246",
+          "start": 183,
+          "end": 195
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Jade Carr, MD",
+          "start": 225,
+          "end": 242
+        },
+        {
+          "type": "NPI",
+          "text": "9608482316",
+          "start": 255,
+          "end": 265
+        },
+        {
+          "type": "DATE",
+          "text": "12/10/2024",
+          "start": 299,
+          "end": 309
+        },
+        {
+          "type": "ADDRESS",
+          "text": "83842 Ibarra Gardens, Justinmouth, MP 71701",
+          "start": 338,
+          "end": 381
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-89853246",
+          "start": 692,
+          "end": 704
+        },
+        {
+          "type": "ICD10",
+          "text": "I10",
+          "start": 869,
+          "end": 872
+        },
+        {
+          "type": "ICD10",
+          "text": "E11.9",
+          "start": 951,
+          "end": 956
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Jade Carr, MD",
+          "start": 1117,
+          "end": 1134
+        }
+      ]
+    },
+    "NOTE-000015": {
+      "note_type": "procedure_note_dictation",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Destiny Smith",
+          "start": 59,
+          "end": 72
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2248549",
+          "start": 85,
+          "end": 96
+        },
+        {
+          "type": "DOB",
+          "text": "11/28/1954",
+          "start": 121,
+          "end": 131
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-64893937",
+          "start": 172,
+          "end": 184
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Melissa Wagner, MD",
+          "start": 214,
+          "end": 236
+        },
+        {
+          "type": "NPI",
+          "text": "9931764920",
+          "start": 249,
+          "end": 259
+        },
+        {
+          "type": "DATE",
+          "text": "12/26/2024",
+          "start": 293,
+          "end": 303
+        },
+        {
+          "type": "ADDRESS",
+          "text": "124 Pamela Summit Apt. 449, Lake Matthew, TX 83631",
+          "start": 332,
+          "end": 382
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Melissa Wagner, MD",
+          "start": 1116,
+          "end": 1138
+        }
+      ]
+    },
+    "NOTE-000016": {
+      "note_type": "ed_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Rebekah Williams",
+          "start": 35,
+          "end": 51
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2246626",
+          "start": 59,
+          "end": 70
+        },
+        {
+          "type": "DOB",
+          "text": "11/01/1977",
+          "start": 76,
+          "end": 86
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-49529087",
+          "start": 116,
+          "end": 128
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. David Parker, MD",
+          "start": 139,
+          "end": 159
+        },
+        {
+          "type": "NPI",
+          "text": "9724440558",
+          "start": 167,
+          "end": 177
+        },
+        {
+          "type": "DATE",
+          "text": "07/07/2025",
+          "start": 192,
+          "end": 202
+        },
+        {
+          "type": "ADDRESS",
+          "text": "05242 Arnold Meadow Apt. 112, Port Mikeside, FL 56834",
+          "start": 212,
+          "end": 265
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-49529087",
+          "start": 490,
+          "end": 502
+        },
+        {
+          "type": "ICD10",
+          "text": "J18.9",
+          "start": 617,
+          "end": 622
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. David Parker, MD",
+          "start": 792,
+          "end": 812
+        }
+      ]
+    },
+    "NOTE-000017": {
+      "note_type": "procedure_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Laura Valencia",
+          "start": 24,
+          "end": 38
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2248752",
+          "start": 46,
+          "end": 57
+        },
+        {
+          "type": "DOB",
+          "text": "08/27/1941",
+          "start": 63,
+          "end": 73
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-39209917",
+          "start": 103,
+          "end": 115
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Nicole Johnson, MD",
+          "start": 126,
+          "end": 148
+        },
+        {
+          "type": "NPI",
+          "text": "9694164665",
+          "start": 156,
+          "end": 166
+        },
+        {
+          "type": "DATE",
+          "text": "02/17/2026",
+          "start": 181,
+          "end": 191
+        },
+        {
+          "type": "ADDRESS",
+          "text": "315 Dickson Summit, East Michelle, AS 23707",
+          "start": 201,
+          "end": 244
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Nicole Johnson, MD",
+          "start": 755,
+          "end": 777
+        }
+      ]
+    },
+    "NOTE-000018": {
+      "note_type": "progress_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Martin Galvan",
+          "start": 23,
+          "end": 36
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2241941",
+          "start": 44,
+          "end": 55
+        },
+        {
+          "type": "DOB",
+          "text": "01/04/1999",
+          "start": 61,
+          "end": 71
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-83002707",
+          "start": 101,
+          "end": 113
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Donna Ross, MD",
+          "start": 124,
+          "end": 142
+        },
+        {
+          "type": "NPI",
+          "text": "9949051496",
+          "start": 150,
+          "end": 160
+        },
+        {
+          "type": "DATE",
+          "text": "05/08/2026",
+          "start": 175,
+          "end": 185
+        },
+        {
+          "type": "CONTACT",
+          "text": "Robert Galvan",
+          "start": 413,
+          "end": 426
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0179",
+          "start": 430,
+          "end": 438
+        },
+        {
+          "type": "ICD10",
+          "text": "I10",
+          "start": 779,
+          "end": 782
+        },
+        {
+          "type": "PHONE",
+          "text": "555-0177",
+          "start": 988,
+          "end": 996
+        },
+        {
+          "type": "SSN",
+          "text": "987-65-6818",
+          "start": 1047,
+          "end": 1058
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Donna Ross, MD",
+          "start": 1177,
+          "end": 1195
+        }
+      ]
+    },
+    "NOTE-000019": {
+      "note_type": "telehealth_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "Chad Ayala",
+          "start": 25,
+          "end": 35
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2243242",
+          "start": 43,
+          "end": 54
+        },
+        {
+          "type": "DOB",
+          "text": "03/11/2004",
+          "start": 60,
+          "end": 70
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-19997019",
+          "start": 102,
+          "end": 114
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Tracey Wilson, MD",
+          "start": 125,
+          "end": 146
+        },
+        {
+          "type": "NPI",
+          "text": "9795392488",
+          "start": 154,
+          "end": 164
+        },
+        {
+          "type": "DATE",
+          "text": "07/27/2026",
+          "start": 179,
+          "end": 189
+        },
+        {
+          "type": "ADDRESS",
+          "text": "New Ryanmouth, NE",
+          "start": 249,
+          "end": 266
+        },
+        {
+          "type": "ICD10",
+          "text": "I48.91",
+          "start": 1018,
+          "end": 1024
+        },
+        {
+          "type": "ICD10",
+          "text": "J18.9",
+          "start": 1090,
+          "end": 1095
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Tracey Wilson, MD",
+          "start": 1375,
+          "end": 1396
+        }
+      ]
+    },
+    "NOTE-000020": {
+      "note_type": "procedure_note",
+      "phi_spans": [
+        {
+          "type": "PATIENT",
+          "text": "James Williams",
+          "start": 24,
+          "end": 38
+        },
+        {
+          "type": "MRN",
+          "text": "MRN-2248503",
+          "start": 46,
+          "end": 57
+        },
+        {
+          "type": "DOB",
+          "text": "12/03/1934",
+          "start": 63,
+          "end": 73
+        },
+        {
+          "type": "ENCOUNTER",
+          "text": "ENC-58503493",
+          "start": 103,
+          "end": 115
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Heidi Spencer, MD",
+          "start": 126,
+          "end": 147
+        },
+        {
+          "type": "NPI",
+          "text": "9728492896",
+          "start": 155,
+          "end": 165
+        },
+        {
+          "type": "DATE",
+          "text": "01/05/2026",
+          "start": 180,
+          "end": 190
+        },
+        {
+          "type": "PROVIDER",
+          "text": "Dr. Heidi Spencer, MD",
+          "start": 669,
+          "end": 690
+        }
+      ]
+    }
+  }
+}

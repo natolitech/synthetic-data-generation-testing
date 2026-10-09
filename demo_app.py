@@ -22,6 +22,11 @@ import pandas as pd
 import streamlit as st
 from faker import Faker
 
+try:
+    from clinical_notes import generate_clinical_notes
+except ImportError:  # pragma: no cover - module lives next to this script
+    generate_clinical_notes = None
+
 # ---------------------------------------------------------------------------
 # Constants (from synth-data-gen skill references)
 # ---------------------------------------------------------------------------
@@ -610,6 +615,7 @@ DOMAIN_TABLES = {
         "Encounters": ("clinical_encounters", generate_clinical_encounters),
         "Diagnoses": ("clinical_diagnoses", generate_clinical_diagnoses),
         "Lab Results": ("clinical_labs", generate_clinical_labs),
+        "Clinical Notes / Dictations": ("clinical_notes", generate_clinical_notes),
     },
     "Student Records": {
         "Students": ("students", generate_student_records),
@@ -672,6 +678,13 @@ def main():
 
         tbl_key, gen_fn = tables[table_name]
 
+        if gen_fn is None:
+            st.error(
+                "The Clinical Notes generator requires `clinical_notes.py` next to "
+                "demo_app.py. It is included in this repository."
+            )
+            return
+
         with st.spinner(f"Generating {row_count} {table_name.lower()} records..."):
             df = gen_fn(row_count, fake)
 
@@ -682,6 +695,19 @@ def main():
 
         with tab_preview:
             st.dataframe(df, use_container_width=True, height=400)
+
+            # Narrative tables: show full note text in expanders
+            if "note_text" in df.columns:
+                st.markdown("#### Full Note Text (first 5)")
+                for _, row in df.head(5).iterrows():
+                    title = f"{row['note_id']} · {row['note_type']} · {row['patient_name']}"
+                    with st.expander(title):
+                        st.text(row["note_text"])
+                        spans = json.loads(row["phi_spans"])
+                        st.caption(
+                            f"{len(spans)} ground-truth PHI spans: "
+                            + ", ".join(sorted({s['type'] for s in spans}))
+                        )
 
         with tab_raw:
             if output_format == "Table Preview":

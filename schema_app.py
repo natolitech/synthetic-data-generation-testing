@@ -22,6 +22,11 @@ import pandas as pd
 import streamlit as st
 from faker import Faker
 
+try:
+    from clinical_notes import generate_note as _gen_note
+except ImportError:  # pragma: no cover - module lives next to this script
+    _gen_note = None
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -271,6 +276,26 @@ def _null_rate(col: ColumnDef) -> float:
     return 0.07
 
 
+def _truncate_to_col(text: str, col: ColumnDef) -> str:
+    """Truncate narrative text to the column's declared length (if any)."""
+    m = re.search(r"\((\d+)\)", col.sql_type)
+    if m and col.base_type in ("varchar", "char", "character", "nvarchar", "nchar"):
+        limit = int(m.group(1))
+        if len(text) > limit:
+            cut = text[:limit - 1]
+            return cut.rsplit(" ", 1)[0] + "…"
+    return text
+
+
+_NOTE_TYPE_POOL = ["progress_note", "history_physical", "discharge_summary",
+                   "ed_note", "telehealth_note", "procedure_note"]
+_NARRATIVE_RE = re.compile(
+    r"note(_text|_body|s)?$|progress.?note|discharge.?summar|soap|"
+    r"h.?and.?p$|^hpi$|chief.?complaint|narrative|clinical.?text|impression$"
+)
+_DICTATION_RE = re.compile(r"dictation|transcript")
+
+
 def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) -> Any:
     name = col.name.lower()
     bt = col.base_type
@@ -282,13 +307,38 @@ def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) ->
         if bt in ("int", "integer", "bigint", "serial", "bigserial", "smallint", "tinyint"):
             return row_idx + 1
         for kw, prefix in [("patient", "SYN"), ("student", "SYN"), ("employee", "EMP"),
-                            ("user", "USR"), ("subject", "SUBJ"), ("claim", "CLM"), ("encounter", "ENC")]:
+                            ("user", "USR"), ("subject", "SUBJ"), ("claim", "CLM"), ("encounter", "ENC"),
+                            ("note", "NOTE")]:
             if kw in name:
                 return f"{prefix}-{row_idx+1:06d}"
         return f"ID-{row_idx+1:06d}"
 
     if col.fk_table and fk_pool:
         return random.choice(fk_pool)
+
+    # Clinical note metadata & narrative (before generic name rules so
+    # note_text columns don't fall through to fake.word())
+    if re.search(r"^note.?type$|note.?category", name):
+        return random.choice(_NOTE_TYPE_POOL)
+    if re.search(r"transcription.?status|note.?status", name):  # before _DICTATION_RE
+        return random.choices(["Signed", "Transcribed", "Draft", "Pending review"],
+                              weights=[0.6, 0.2, 0.1, 0.1])[0]
+    if re.search(r"^author$|dictated.?by|signed.?by|transcriptionist", name):
+        return f"Dr. {fake.first_name()} {fake.last_name()}, MD"
+    if _DICTATION_RE.search(name):
+        if _gen_note is not None:
+            note = _gen_note(row_idx, fake, "mix", dictation_ratio=1.0)["note_text"]
+            return _truncate_to_col(note, col)
+        return _truncate_to_col(
+            "Dictation received via telephone line. Patient reports ongoing symptoms; "
+            "transcription pending review by attending provider.", col)
+    if _NARRATIVE_RE.search(name):
+        if _gen_note is not None:
+            note = _gen_note(row_idx, fake, "mix", dictation_ratio=0.0)["note_text"]
+            return _truncate_to_col(note, col)
+        return _truncate_to_col(
+            "Patient seen and evaluated. Condition stable, continue current plan. "
+            "Follow up as scheduled if symptoms change.", col)
 
     # Names
     if re.search(r"first.?name|fname|given.?name|forename", name):
