@@ -47,7 +47,14 @@ NOTE_TYPES = [
     "ed_note",
     "telehealth_note",
     "procedure_note",
+    "radiology_report",
+    "behavioral_health_note",
+    "patient_portal_message",
+    "phone_call_transcript",
 ]
+
+# note types that are never rendered as dictation (already audio→text or patient-written)
+NON_DICTATABLE = {"patient_portal_message", "phone_call_transcript"}
 
 # note type label used inside the note header
 NOTE_LABELS = {
@@ -57,6 +64,10 @@ NOTE_LABELS = {
     "ed_note": "EMERGENCY DEPARTMENT NOTE",
     "telehealth_note": "TELEHEALTH NOTE",
     "procedure_note": "PROCEDURE NOTE",
+    "radiology_report": "RADIOLOGY REPORT",
+    "behavioral_health_note": "BEHAVIORAL HEALTH NOTE",
+    "patient_portal_message": "PATIENT PORTAL MESSAGE",
+    "phone_call_transcript": "INBOUND CALL TRANSCRIPT",
 }
 
 # Correlated clinical content: dx -> icd10, meds, relevant labs, symptoms.
@@ -83,6 +94,20 @@ CONDITIONS = {
         "symptoms": ["depressed mood", "reduced interest in usual activities", "difficulty sleeping"],
         "followup": "behavioral health follow-up in 4 weeks",
     },
+    "Generalized anxiety disorder": {
+        "icd10": "F41.1",
+        "meds": ["escitalopram 10mg daily", "sertraline 50mg daily", "buspirone 10mg twice daily"],
+        "labs": [("GAD-7 score", "12", "")],
+        "symptoms": ["excessive worry most days", "restlessness", "difficulty concentrating"],
+        "followup": "behavioral health follow-up in 6 weeks",
+    },
+    "Alcohol use disorder, in sustained remission": {
+        "icd10": "F10.21",
+        "meds": ["naltrexone 50mg daily", "acamprosate 333mg three times daily"],
+        "labs": [("liver function panel", "within normal limits", "")],
+        "symptoms": ["denies current alcohol use", "attending weekly support meetings"],
+        "followup": "monthly recovery check-ins",
+    },
     "Community-acquired pneumonia": {
         "icd10": "J18.9",
         "meds": ["azithromycin 250mg daily", "amoxicillin 500mg three times daily"],
@@ -105,6 +130,18 @@ CONDITIONS = {
         "followup": "cardiology in 6 weeks with repeat ECG",
     },
 }
+
+# Conditions treated as behavioral-health / SUD sensitive (42 CFR Part 2 testing)
+BH_CONDITIONS = {"Major depressive disorder", "Generalized anxiety disorder",
+                 "Alcohol use disorder, in sustained remission"}
+
+# Non-English patient quotes (interpreter / family translator scenes)
+SPANISH_SNIPPETS = [
+    "Mi espalda me duele mucho",
+    "No puedo dormir por la noche",
+    "Me duele la cabeza desde la semana pasada",
+    "Tengo miedo de tomar tanta medicina",
+]
 
 ALLERGIES = [
     ("penicillin", "hives"),
@@ -369,7 +406,7 @@ def _plan(b, ctx):
     if random.random() < 0.3:
         b.add("3. Review after-hours instructions; patient to call ")
         b.add(ctx["phone"], "PHONE").add(" with concerns. ")
-    if random.random() < 0.25:
+    if random.random() < 0.25 and ctx.get("ssn"):
         b.add("4. Insurance verified; SSN on file ")
         b.add(ctx["ssn"], "SSN").add(" matched registration records. ")
     b.add("Patient verbalized understanding and agreement with the plan. ")
@@ -502,6 +539,197 @@ def _build_procedure_note(ctx):
     return b
 
 
+# Condition -> (exam, findings, impression) for radiology correlation
+RADIOLOGY_BY_CONDITION = {
+    "Community-acquired pneumonia": (
+        "Chest X-ray, 2 views",
+        "There is a patchy right lower lobe opacity with air bronchograms. No pleural effusion or pneumothorax. Cardiomediastinal silhouette is normal.",
+        "1. Patchy right lower lobe infiltrate, consistent with community-acquired pneumonia."),
+    "Primary osteoarthritis of the right knee": (
+        "Right knee X-ray, 3 views",
+        "Medial joint space narrowing with subchondral sclerosis and osteophyte formation. No acute fracture or dislocation. Soft tissues unremarkable.",
+        "1. Medial compartment osteoarthritis of the right knee, moderate."),
+    "Atrial fibrillation": (
+        "Chest X-ray, 2 views",
+        "Mild cardiomegaly. No pulmonary edema, effusion, or focal consolidation. Bones and soft tissues unremarkable.",
+        "1. Mild cardiomegaly. 2. No evidence of pulmonary edema."),
+    "Type 2 diabetes mellitus": (
+        "Chest X-ray, 2 views",
+        "Lungs are clear bilaterally. No acute cardiopulmonary process.",
+        "1. No acute cardiopulmonary finding."),
+    "Essential hypertension": (
+        "Chest X-ray, 2 views",
+        "Normal heart size. Lungs clear. No acute abnormality.",
+        "1. No acute cardiopulmonary finding."),
+    "Major depressive disorder": (
+        "Chest X-ray, 2 views",
+        "Lungs clear bilaterally, obtained to rule out organic etiology. No acute abnormality.",
+        "1. No acute cardiopulmonary finding."),
+    "Generalized anxiety disorder": (
+        "Chest X-ray, 2 views",
+        "Unremarkable examination. No acute abnormality.",
+        "1. No acute cardiopulmonary finding."),
+    "Alcohol use disorder, in sustained remission": (
+        "Chest X-ray, 2 views",
+        "Lungs clear. No acute abnormality. No radiographic evidence of complication.",
+        "1. No acute cardiopulmonary finding."),
+}
+
+
+def _build_radiology_report(ctx):
+    exam, findings, impression = RADIOLOGY_BY_CONDITION.get(
+        ctx["primary"], ("Chest X-ray, 2 views",
+                         "Lungs are clear bilaterally. No acute cardiopulmonary process.",
+                         "1. No acute cardiopulmonary finding."))
+    b = NoteBuilder()
+    b.line(NOTE_LABELS["radiology_report"])
+    b.add("Exam: ").add(exam).line()
+    b.add("Exam Date: ").add(ctx["service_datetime"].strftime("%m/%d/%Y"), "DATE").line()
+    b.add("Patient: ").add(ctx["name"], "PATIENT")
+    b.add("   MRN: ").add(ctx["mrn"], "MRN").line()
+    b.add("DOB: ").add(ctx["dob"].strftime("%m/%d/%Y"), "DOB")
+    b.add(f'  ({ctx["age"]} y.o. {ctx["gender"]})   Accession: ')
+    b.add(f'ACC-{random.randint(100000, 999999)}').line().blank()
+    b.add("REFERRING PROVIDER: ").add(ctx["provider"], "PROVIDER").blank()
+    b.add("INDICATION: ").add(ctx["primary"]).add(". ").blank()
+    b.line("TECHNIQUE: Routine views were obtained per department protocol. ")
+    b.line("COMPARISON: None available. ").blank()
+    b.line("FINDINGS:")
+    b.add(findings + " ").blank()
+    b.line("IMPRESSION:")
+    b.add(impression + ". ")
+    if random.random() < 0.4:
+        b.add("2. No acute abnormality. ")
+    b.blank()
+    b.add("Electronically signed by ").add(ctx["provider"], "PROVIDER").add(".")
+    return b
+
+
+def _build_behavioral_health_note(ctx):
+    is_sud = ctx["primary"] == "Alcohol use disorder, in sustained remission" or \
+        (ctx["secondary"] == "Alcohol use disorder, in sustained remission")
+    b = NoteBuilder()
+    b.line(NOTE_LABELS["behavioral_health_note"])
+    if is_sud:
+        b.line("*** CONFIDENTIAL — SUBSTANCE USE DISORDER RECORDS PROTECTED BY 42 CFR PART 2 ***")
+        b.line("*** REDISCLOSURE PROHIBITED WITHOUT WRITTEN PATIENT CONSENT ***")
+    else:
+        b.line("*** CONFIDENTIAL — BEHAVIORAL HEALTH RECORD ***")
+    b.line()
+    b.add("Patient: ").add(ctx["name"], "PATIENT")
+    b.add("   MRN: ").add(ctx["mrn"], "MRN").line()
+    b.add("DOB: ").add(ctx["dob"].strftime("%m/%d/%Y"), "DOB")
+    b.add(f'  ({ctx["age"]} y.o. {ctx["gender"]})   Encounter: ')
+    b.add(ctx["encounter_id"], "ENCOUNTER").line()
+    b.add("Clinician: ").add(ctx["provider"], "PROVIDER")
+    b.add("   NPI: ").add(ctx["npi"], "NPI").line().blank()
+
+    b.line("SUBJECTIVE:")
+    b.add(f'Patient presents for follow-up of {ctx["primary"].lower()}. ')
+    b.add(f'Reports {random.choice(ctx["primary_detail"]["symptoms"])}').add(". ")
+    if random.random() < 0.25:
+        b.add("Through an interpreter, patient states \"")
+        b.add(random.choice(SPANISH_SNIPPETS))
+        b.add("\" — interpreter translated for the clinician. ")
+    b.add("Denies thoughts of self-harm or harm to others. "
+          "Reports adequate support system and safe home environment. ").blank()
+
+    b.line("OBJECTIVE — MENTAL STATUS EXAM:")
+    b.add("Appearance: well-groomed, cooperative. Speech: normal rate and volume. ")
+    b.add("Mood: \"").add(random.choice(["okay", "better than last time", "still low", "anxious"]))
+    b.add(".\" Affect: congruent. Thought process: linear and goal-directed. ")
+    b.add("Cognition: alert and oriented. Insight and judgment: intact. ").blank()
+
+    b.line("ASSESSMENT:")
+    b.add(f'1. {ctx["primary"]} (').add(ctx["primary_detail"]["icd10"], "ICD10").add(") — ")
+    b.add(random.choice(["improving with current treatment", "stable", "partial response, regimen adjusted"])).add(". ")
+    if ctx["secondary"]:
+        b.add(f'2. {ctx["secondary"]} — monitored, stable. ')
+    b.blank()
+
+    b.line("PLAN:")
+    b.add("1. Continue " + random.choice(ctx["primary_detail"]["meds"]) + ". ")
+    b.add(f'2. {ctx["primary_detail"]["followup"].capitalize()}. ')
+    b.add("3. Crisis resources reviewed; patient provided the 24/7 support line ")
+    b.add(ctx["phone"], "PHONE").add(". ")
+    if is_sud:
+        b.add("4. Recovery program attendance verified; consent form on file per 42 CFR Part 2. ")
+    b.blank()
+    b.add("Electronically signed by ").add(ctx["provider"], "PROVIDER").add(".")
+    return b
+
+
+def _build_portal_message(ctx):
+    b = NoteBuilder()
+    b.line(NOTE_LABELS["patient_portal_message"])
+    b.add("From: ").add(ctx["email"], "EMAIL").line()
+    b.add("To: ").add("messages@clinic.example.com").line()
+    b.add("Sent: ").add(ctx["service_datetime"].strftime("%m/%d/%Y %H:%M"), "DATE").line()
+    b.add("Subject: ").add(random.choice([
+        "question about my medicine", "follow up visit", "refill needed",
+        "still not feeling great", "insurance form question"])).line()
+    b.line()
+    b.add("hello, this is ").add(ctx["name"], "PATIENT").add(", ")
+    b.add("my date of birth is ").add(ctx["dob"].strftime("%m/%d/%Y"), "DOB").add(". ")
+    b.add(f'i wanted to ask about my {random.choice(ctx["primary_detail"]["meds"])} ')
+    b.add("because " + random.choice([
+        "i think its making me dizzy", "i ran out last week",
+        "the pharmacy said it needs approval", "ive been feeling better, do i still take it?"]) + ". ")
+    if random.random() < 0.3:
+        b.add("my " + ctx["contact_rel"] + " ")
+        b.add(ctx["contact_name"], "CONTACT").add(" said i should message you directly. ")
+    if random.random() < 0.2:
+        b.add("(my daughter types these for me, she is translating) \"")
+        b.add(random.choice(SPANISH_SNIPPETS)).add("\" ")
+    b.add("you can call me at ").add(ctx["phone"], "PHONE")
+    b.add(" or reply here. ")
+    if random.random() < 0.35:
+        b.add("also i moved, my new address is ")
+        b.add(f'{ctx["address"]}, {ctx["city"]}, {ctx["state"]} {ctx["zip"]}', "ADDRESS").add(". ")
+    b.add("thank you!")
+    return b
+
+
+def _build_call_transcript(ctx):
+    agent = f"{random.choice(['Kelsey', 'Jordan', 'Maria', 'Sam', 'Dana'])} (Scheduling)"
+    t = random.randint(0, 400)
+    def ts():
+        nonlocal t
+        t += random.randint(5, 40)
+        return f"[{t // 60:02d}:{t % 60:02d}] "
+    b = NoteBuilder()
+    b.line(NOTE_LABELS["phone_call_transcript"])
+    b.add("Call Reference: ").add(ctx["encounter_id"], "ENCOUNTER").line()
+    b.add("Date/Time: ").add(ctx["service_datetime"].strftime("%m/%d/%Y %H:%M"), "DATE").line()
+    b.add("Caller: ").add(ctx["name"], "PATIENT")
+    b.add("   Receiver: ").add(agent, "PROVIDER").line()
+    b.add("Line: ").add(ctx["phone"], "PHONE").line().blank()
+    b.add(ts()).add("AGENT: Thank you for calling the clinic, this is ")
+    b.add(agent.split()[0]).add(". Who am I speaking with today? ").blank()
+    b.add(ts()).add("CALLER: Hi, this is ").add(ctx["name"], "PATIENT").add(". ")
+    if random.random() < 0.25:
+        b.add("(speaking Spanish, interpreter joined) \"")
+        b.add(random.choice(SPANISH_SNIPPETS))
+        b.add("\" ")
+    b.blank()
+    b.add(ts()).add("AGENT: Thank you. For verification, can you confirm your date of birth and address? ").blank()
+    b.add(ts()).add("CALLER: Sure, ").add(ctx["dob"].strftime("%m/%d/%Y"), "DOB").add(", and I live at ")
+    b.add(f'{ctx["address"]}, {ctx["city"]}, {ctx["state"]} {ctx["zip"]}', "ADDRESS").add(". ").blank()
+    b.add(ts()).add("AGENT: Perfect, you're verified. What can I help you with? ").blank()
+    b.add(ts()).add("CALLER: I need to schedule my ")
+    b.add(ctx["primary_detail"]["followup"]).add(". ").blank()
+    b.add(ts()).add("AGENT: I have you down with your provider. A confirmation call will go to ")
+    b.add(ctx["phone"], "PHONE").add(". ").blank()
+    if random.random() < 0.3:
+        b.add(ts()).add("CALLER: Also, can you update my chart? My ")
+        b.add(ctx["contact_rel"]).add(" ").add(ctx["contact_name"], "CONTACT")
+        b.add(" is my emergency contact now, at ").add(ctx["contact_phone"], "PHONE").add(". ").blank()
+    b.add(ts()).add("AGENT: All set, anything else? ").blank()
+    b.add(ts()).add("CALLER: No, that's all, thank you. ").blank()
+    b.add(f"Duration: {random.randint(2, 9)} min {random.randint(0, 59)} sec")
+    return b
+
+
 _BUILDERS = {
     "progress_note": _build_progress_note,
     "history_physical": _build_history_physical,
@@ -509,6 +737,10 @@ _BUILDERS = {
     "ed_note": _build_ed_note,
     "telehealth_note": _build_telehealth_note,
     "procedure_note": _build_procedure_note,
+    "radiology_report": _build_radiology_report,
+    "behavioral_health_note": _build_behavioral_health_note,
+    "patient_portal_message": _build_portal_message,
+    "phone_call_transcript": _build_call_transcript,
 }
 
 
@@ -521,7 +753,7 @@ def generate_note(i: int, fake: Faker, note_type: str = "mix",
     """Generate one synthetic note row (dict) with ground-truth PHI spans."""
     if note_type == "mix":
         note_type = random.choice(NOTE_TYPES)
-    dictation = random.random() < dictation_ratio
+    dictation = random.random() < dictation_ratio and note_type not in NON_DICTATABLE
 
     ctx = _make_context(i, fake)
     builder = _BUILDERS[note_type](ctx)
@@ -616,6 +848,15 @@ _REAL_EMAIL_DOMAINS = {
     "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
 }
 _SAFED = {"example.com", "example.org", "example.net", "test.invalid", "example.edu"}
+_SAFE_TLDS = (".example", ".invalid", ".test", ".localhost")
+
+
+def _safe_domain(d: str) -> bool:
+    """Exact reserved domains, reserved TLDs, and their subdomains are safe."""
+    d = d.lower()
+    return (d in _SAFED
+            or any(d.endswith(t) for t in _SAFE_TLDS)
+            or any(d.endswith("." + s) for s in _SAFED))
 _SSN_RE = re.compile(r"\b(\d{3})-(\d{2})-(\d{4})\b")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@([\w-]+\.[\w.-]+)\b")
 _PHONE_RE = re.compile(r"\b(\d{3})[-.)]?\s*(\d{3})[-.]\s*(\d{4})\b")
@@ -636,7 +877,7 @@ def validate(text: str) -> dict:
         d = domain.lower()
         if d in _REAL_EMAIL_DOMAINS:
             results["critical"].append(f"Real email domain: @{d}")
-        elif d not in _SAFED:
+        elif not _safe_domain(d):
             results["warnings"].append(f"Unrecognized email domain: @{d}")
 
     for _, exch, num in _PHONE_RE.findall(text):

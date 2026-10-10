@@ -47,11 +47,21 @@ REAL_EMAIL_DOMAINS = {
     'anl.gov', 'fnal.gov',  # DOE labs
 }
 
-# Safe email domains (RFC 2606 reserved)
+# Safe email domains (RFC 2606 reserved) — subdomains and reserved TLDs are safe too
 SAFE_EMAIL_DOMAINS = {
     'example.com', 'example.org', 'example.net', 'test.invalid',
     'example.invalid', 'test.test',
 }
+SAFE_EMAIL_TLDS = {'.example', '.invalid', '.test', '.localhost'}
+
+
+def _is_safe_email_domain(domain: str) -> bool:
+    d = domain.lower()
+    if d in SAFE_EMAIL_DOMAINS:
+        return True
+    if any(d.endswith(tld) for tld in SAFE_EMAIL_TLDS):
+        return True
+    return any(d.endswith('.' + s) for s in SAFE_EMAIL_DOMAINS)
 
 # Real phone patterns to flag (not in 555-01xx range)
 SAFE_PHONE_PATTERN = re.compile(r'555-01\d{2}')
@@ -195,7 +205,7 @@ def check_emails(text, result):
                 f"Real email domain found: @{domain} ({count} occurrences). "
                 f"Use @example.com or @test.invalid instead."
             )
-        elif domain not in SAFE_EMAIL_DOMAINS:
+        elif not _is_safe_email_domain(domain):
             result.add_warning(
                 f"Unrecognized email domain: @{domain} ({count} occurrences). "
                 f"Verify this is not a real domain."

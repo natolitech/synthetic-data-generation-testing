@@ -234,6 +234,28 @@ def document_reference_resource(row, patient_id: str, provider_ref: str = None) 
     }
 
 
+def medication_request_resource(row, provider_id: str = None) -> dict:
+    r = {
+        "resourceType": "MedicationRequest",
+        "id": f'MED-{row["med_id"]}',
+        "status": {"Active": "active", "Discontinued": "stopped",
+                   "Completed": "completed"}.get(row.get("status"), "active"),
+        "intent": "order",
+        "medicationCodeableConcept": {"text": row["medication"]},
+        "subject": {"reference": f'Patient/{row["patient_id"]}'},
+        "encounter": {"reference": f'Encounter/{row["encounter_id"]}'},
+        "authoredOn": row["start_date"],
+    }
+    if provider_id:
+        r["requester"] = {"reference": f"Practitioner/{provider_id}"}
+    if row.get("end_date"):
+        r["dosageInstruction"] = [{
+            "timing": {"boundsPeriod": {"start": row["start_date"],
+                                        "end": row["end_date"]}},
+        }]
+    return r
+
+
 def _encounter_class(enc_type: str) -> dict:
     code, display = _ENCOUNTER_CLASS.get(enc_type, ("AMB", "ambulatory"))
     return {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
@@ -302,6 +324,11 @@ def cohort_to_bundles(cohort: dict):
             diagnoses=pd.DataFrame(dx_by_enc.get(e["encounter_id"], []))))
     conditions = [condition_resource(d, enc_patient.get(d["encounter_id"]))
                   for _, d in cohort["diagnoses"].iterrows()]
+    medication_requests = []
+    if "medications" in cohort and len(cohort["medications"]):
+        for _, m in cohort["medications"].iterrows():
+            pid = prov_by_enc.get(m["encounter_id"])
+            medication_requests.append(medication_request_resource(m, pid))
     observations = [observation_resource(l, enc_patient.get(l["encounter_id"]))
                     for _, l in cohort["lab_results"].iterrows()]
     docrefs = []
@@ -310,12 +337,14 @@ def cohort_to_bundles(cohort: dict):
         ref = f"Practitioner/{pid}" if pid else None
         docrefs.append(document_reference_resource(n, n["patient_id"], ref))
 
-    combined = patients + practitioners + encounters + conditions + observations + docrefs
+    combined = (patients + practitioners + encounters + conditions
+                + medication_requests + observations + docrefs)
     yield "synthetic_fhir_bundle.json", _bundle(combined)
     for fname, entries in [
         ("synthetic_patients_fhir.json", patients),
         ("synthetic_encounters_fhir.json", encounters),
         ("synthetic_diagnoses_fhir.json", conditions),
+        ("synthetic_medications_fhir.json", medication_requests),
         ("synthetic_lab_results_fhir.json", observations),
         ("synthetic_clinical_notes_fhir.json", docrefs),
     ]:

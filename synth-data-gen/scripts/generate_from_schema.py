@@ -282,7 +282,9 @@ def _truncate_to_col(text: str, col: ColumnDef) -> str:
 
 
 _NOTE_TYPE_POOL = ["progress_note", "history_physical", "discharge_summary",
-                   "ed_note", "telehealth_note", "procedure_note"]
+                   "ed_note", "telehealth_note", "procedure_note",
+                   "radiology_report", "behavioral_health_note",
+                   "patient_portal_message", "phone_call_transcript"]
 _NARRATIVE_RE = re.compile(
     r"note(_text|_body|s)?$|progress.?note|discharge.?summar|soap|"
     r"h.?and.?p$|^hpi$|chief.?complaint|narrative|clinical.?text|impression$"
@@ -530,6 +532,26 @@ def _null_rate(col: ColumnDef) -> float:
 # Data generation
 # ---------------------------------------------------------------------------
 
+def _reconcile_age(rows: list, table) -> None:
+    """Temporal consistency: when a table has both DOB and age columns, derive
+    age from DOB instead of leaving them independently random."""
+    dob_col = next((c.name for c in table.columns
+                    if re.search(r"^dob$|birth.?date|date.?of.?birth|birthdate", c.name.lower())), None)
+    age_col = next((c.name for c in table.columns if c.name.lower() == "age"), None)
+    if not (dob_col and age_col):
+        return
+    today = date.today()
+    for row in rows:
+        dob = row.get(dob_col)
+        if not dob:
+            continue
+        try:
+            d = date.fromisoformat(str(dob)[:10])
+        except ValueError:
+            continue
+        row[age_col] = today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+
+
 def generate_table(table: TableDef, n: int, fake: Faker,
                    fk_pools: Optional[Dict[str, List]] = None) -> pd.DataFrame:
     if fk_pools is None:
@@ -569,6 +591,7 @@ def generate_table(table: TableDef, n: int, fake: Faker,
             row[col.name] = _generate_value(col, fake, pool, i)
         rows.append(row)
 
+    _reconcile_age(rows, table)
     return pd.DataFrame(rows)
 
 
@@ -656,6 +679,15 @@ _REAL_EMAIL_DOMAINS = {
     "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
 }
 _SAFE_EMAIL_DOMAINS = {"example.com", "example.org", "example.net", "test.invalid", "example.edu"}
+_SAFE_EMAIL_TLDS = (".example", ".invalid", ".test", ".localhost")
+
+
+def _safe_domain(d: str) -> bool:
+    """Exact reserved domains, reserved TLDs, and their subdomains are safe."""
+    d = d.lower()
+    return (d in _SAFE_EMAIL_DOMAINS
+            or any(d.endswith(t) for t in _SAFE_EMAIL_TLDS)
+            or any(d.endswith("." + s) for s in _SAFE_EMAIL_DOMAINS))
 _SSN_RE = re.compile(r"\b(\d{3})-(\d{2})-(\d{4})\b")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@([\w-]+\.[\w.-]+)\b")
 _PHONE_RE = re.compile(r"\b(\d{3})[-.)]?\s*(\d{3})[-.]\s*(\d{4})\b")
@@ -680,7 +712,7 @@ def validate(text: str) -> dict:
         seen.add(d)
         if d in _REAL_EMAIL_DOMAINS:
             results["critical"].append(f"Real email domain: @{d}")
-        elif d not in _SAFE_EMAIL_DOMAINS:
+        elif not _safe_domain(d):
             results["warnings"].append(f"Unrecognized email domain: @{d}")
 
     unsafe = safe = 0

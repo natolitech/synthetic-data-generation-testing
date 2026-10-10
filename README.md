@@ -112,10 +112,12 @@ python clinical_notes.py -n 10 -t discharge_summary -f json --ground-truth
 ```
 
 Note types: `progress_note`, `history_physical`, `discharge_summary`, `ed_note`,
-`telehealth_note`, `procedure_note` (or `mix`). Dictation transcripts include
-realistic ASR artifacts — spoken punctuation ("period", "comma", "colon"),
-"new paragraph" commands, disfluencies, `[inaudible]` markers, and
-mid-sentence corrections.
+`telehealth_note`, `procedure_note`, `radiology_report`, `behavioral_health_note`
+(42 CFR Part 2 banners), `patient_portal_message` (patient-written, with typos),
+`phone_call_transcript` (identity-verification dialog) — or `mix`. Dictation
+transcripts include realistic ASR artifacts — spoken punctuation ("period",
+"comma", "colon"), "new paragraph" commands, disfluencies, `[inaudible]` markers,
+mid-sentence corrections, and occasional Spanish interpreter quotes.
 
 **Ground-truth PHI spans.** Every note can be annotated with the exact character
 offsets of each PHI instance (`PATIENT`, `MRN`, `DOB`, `SSN`, `PHONE`, `ADDRESS`,
@@ -134,22 +136,29 @@ Single-table generators each invent their own ID pools — fine for fixtures, us
 for testing joins. The bundle generator produces a **referentially-linked** dataset:
 
 ```bash
-# 100 patients → encounters → diagnoses/labs/notes (CSV + manifest + zip)
+# 100 patients → encounters → diagnoses/meds/labs/notes (CSV + manifest + zip)
 python clinical_bundle.py -n 100 --validate --zip
 
 # FHIR R4: combined Bundle (Patient/Practitioner/Encounter/Condition/
-# Observation/DocumentReference) + one bundle per resource type
+# MedicationRequest/Observation/DocumentReference) + one bundle per type
 python clinical_bundle.py -n 250 --format fhir
 
 # HL7 v2.5.1: ADT^A01 admit + ORU^R01 lab result messages
 python clinical_bundle.py -n 50 --format hl7
+
+# Locale pack (UK names/addresses, Ofcom drama phones, ZZ99 postcodes)
+python clinical_bundle.py -n 80 --locale uk
+
+# Dirty data mode: duplicates, mixed date formats, OCR-ish note damage
+python clinical_bundle.py -n 60 --dirty
 ```
 
 **Guarantees** (checked by `check_integrity()` on every run):
 
-- every `encounter.patient_id` exists in patients; every diagnosis/lab/note references a real encounter
+- every `encounter.patient_id` exists in patients; every diagnosis/med/lab/note references a real encounter
 - note `patient_id` equals its encounter's patient; note narrative embeds the actual patient name/MRN/DOB and the encounter's principal diagnosis
-- `DOB < admit < discharge`, and note service times fall inside the encounter window
+- `DOB < admit < discharge`, note service times fall inside the encounter window, and med start dates follow their matching diagnosis onset
+- **correlations**: medications come from the encounter's actual diagnoses; labs are condition-biased (diabetes → elevated HbA1c/glucose, pneumonia → elevated WBC); radiology findings match the indication; behavioral-health notes only appear for BH/SUD encounters
 
 **Every run writes `manifest.json`** (seed, row counts, tool versions, timestamp) so
 the dataset can be reproduced exactly; `--zip` bundles everything, including the PHI
@@ -168,11 +177,13 @@ Use when you want to generate data for a **standard enterprise domain** without 
 
 | Domain | Tables |
 |--------|--------|
-| Clinical / EHR | Patients, Encounters, Diagnoses, Lab Results, Clinical Notes / Dictations, **Full Dataset — linked (5 tables)** |
+| Clinical / EHR | Patients, Encounters, Diagnoses, Lab Results, Clinical Notes / Dictations, **Full Dataset — linked (6 tables, incl. Medications)** |
 
 Selecting **Full Dataset — linked** generates a referentially-linked cohort
 (same guarantees as the bundle CLI) with per-table previews, an integrity badge,
-a zip download (CSV + manifest + PHI ground truth), and a FHIR R4 bundle download.
+a zip download (CSV + manifest + PHI ground truth), and a FHIR R4 bundle
+download — plus **Locale** (us/uk/ca/eu) and **Dirty data mode** toggles in the
+sidebar.
 | Student Records | Students, Course Enrollment |
 | Human Resources | Employees |
 | Identity & Access | User Accounts, Entitlements |
@@ -285,12 +296,16 @@ Generates a referentially-linked synthetic clinical dataset with integrity guara
 python clinical_bundle.py [options]
 
   -n, --rows N          Number of patients (default: 100). Encounters, diagnoses,
-                        labs, and notes scale from the patient pool.
+                        medications, labs, and notes scale from the patient pool.
   -s, --seed N          Random seed (default: 42)
   -f, --format          csv | json | sql | fhir | hl7  (default: csv)
   -o, --output DIR      Output directory (default: ./synthetic_output)
   --no-notes            Skip note generation
   --dictation-ratio F   Fraction of notes as raw dictation (default: 0.35)
+  --locale LOCALE       us | uk | ca | eu — localized names/addresses/phones with
+                        region-appropriate fictional ranges (default: us)
+  --dirty               Realistic data-quality problems (duplicates, mixed date
+                        formats, whitespace/casing drift, OCR-ish note damage)
   --zip                 Also write synthetic_clinical_bundle.zip
   --validate            Run PII/PHI validation after generation
 ```

@@ -98,7 +98,107 @@ LAB_DEFS = [
 
 CONDITIONS = cn.CONDITIONS  # name -> {icd10, meds, labs, symptoms, followup}
 
-TABLE_ORDER = ["patients", "encounters", "diagnoses", "lab_results", "clinical_notes"]
+TABLE_ORDER = ["patients", "encounters", "diagnoses", "medications",
+               "lab_results", "clinical_notes"]
+
+# ---------------------------------------------------------------------------
+# Locale packs — region-appropriate fictional ranges
+# ---------------------------------------------------------------------------
+# US phones use the NANP fictional range (555-01xx); UK uses the Ofcom drama
+# range (01632 960xxx); Canada shares NANP; EU uses a synthetic +49 pattern.
+# Non-US patients get a NULL ssn column (foreign patients rarely have one —
+# and there is no universally "safe" national-ID range outside the US).
+
+LOCALES = {
+    "us": {
+        "label": "United States",
+        "faker_locale": None,
+        "languages": [("English", 0.70), ("Spanish", 0.15), ("Mandarin", 0.05),
+                      ("Arabic", 0.03), ("Tagalog", 0.02), ("Korean", 0.02),
+                      ("Hindi", 0.01), ("French", 0.01), ("Vietnamese", 0.01)],
+        "ssn": True,
+    },
+    "uk": {
+        "label": "United Kingdom",
+        "faker_locale": "en_GB",
+        "languages": [("English", 0.90), ("Polish", 0.03), ("Urdu", 0.02),
+                      ("Punjabi", 0.02), ("Bengali", 0.01), ("Gujarati", 0.01),
+                      ("French", 0.01)],
+        "ssn": False,
+    },
+    "ca": {
+        "label": "Canada",
+        "faker_locale": "en_CA",
+        "languages": [("English", 0.68), ("French", 0.27), ("Mandarin", 0.02),
+                      ("Punjabi", 0.02), ("Tagalog", 0.01)],
+        "ssn": False,
+    },
+    "eu": {
+        "label": "European Union (Germany)",
+        "faker_locale": "de_DE",
+        "languages": [("German", 0.84), ("English", 0.10), ("Turkish", 0.03),
+                      ("Polish", 0.02), ("Arabic", 0.01)],
+        "ssn": False,
+    },
+}
+
+
+def _locale_phone(locale_key: str) -> str:
+    if locale_key == "uk":
+        return f"01632 960{random.randint(100, 999)}"      # Ofcom drama range
+    if locale_key == "ca":
+        return f"555-01{random.randint(0, 9)}{random.randint(0, 9)}"  # NANP
+    if locale_key == "eu":
+        return f"+49 30 5550-{random.randint(100, 999)}"   # synthetic pattern
+    return f"555-01{random.randint(0, 9)}{random.randint(0, 9)}"
+
+
+def _locale_postal(locale_key: str, loc_fake) -> str:
+    if locale_key == "uk":
+        # ZZ99 is the UK/NHS convention for test/development postcodes
+        letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+        return f"ZZ99 {random.randint(1, 9)}{random.choice(letters)}{random.choice(letters)}"
+    if locale_key == "ca":
+        # FSA 'Z' prefix is unassigned in Canada — zero collision with real codes
+        letters = "ABCDEFGHJKLMNPRSTVXY"
+        return (f"Z{random.randint(0, 9)}{random.choice(letters)} "
+                f"{random.randint(0, 9)}{random.choice(letters)}{random.randint(0, 9)}")
+    if locale_key == "eu":
+        return f"{random.randint(10, 99)}{random.randint(100, 999)}"
+    return loc_fake.zipcode()
+
+
+def _locale_region(locale_key: str, loc_fake) -> str:
+    """Administrative area for the `state` column."""
+    try:
+        if locale_key == "uk" and hasattr(loc_fake, "county"):
+            return loc_fake.county()
+        if locale_key == "ca" and hasattr(loc_fake, "province_abbr"):
+            return loc_fake.province_abbr()
+        if locale_key == "eu":
+            return random.choice(["BY", "BE", "BW", "NRW", "HE", "SN"])
+        return loc_fake.state_abbr()
+    except Exception:
+        return ""
+
+
+# Condition-relevant labs: values biased to ranges that agree with the dx
+CONDITION_LABS = {
+    "Type 2 diabetes mellitus": [
+        ("4548-4", "HbA1c", "%", 4.0, 6.0, 7.2, 11.5),      # biased high
+        ("2345-7", "Glucose", "mg/dL", 70, 100, 140, 380),
+    ],
+    "Essential hypertension": [
+        ("3094-0", "BUN", "mg/dL", 7, 20, 7, 20),
+        ("2160-0", "Creatinine", "mg/dL", 0.6, 1.2, 0.6, 1.6),
+    ],
+    "Community-acquired pneumonia": [
+        ("6690-2", "WBC", "10*3/uL", 4.5, 11.0, 12.5, 24.0),  # biased high
+    ],
+    "Atrial fibrillation": [
+        ("3016-3", "TSH", "mIU/L", 0.4, 4.0, 0.4, 4.0),
+    ],
+}
 
 
 def _weighted(options):
@@ -122,14 +222,20 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
                              encounters_per_patient=None,
                              dictation_ratio: float = 0.35,
                              with_notes: bool = True,
-                             note_probability: float = 0.7) -> dict:
+                             note_probability: float = 0.7,
+                             locale: str = "us") -> dict:
     """Generate a referentially-linked clinical dataset.
 
     Returns a dict of DataFrames keyed by table name (TABLE_ORDER).
+    `locale` in {"us","uk","ca","eu"} localizes names/addresses/phones with
+    region-appropriate fictional ranges (non-US patients have NULL ssn).
     """
     fake = fake or Faker()
     if encounters_per_patient is None:
         encounters_per_patient = ENC_PER_PATIENT
+
+    pack = LOCALES.get(locale, LOCALES["us"])
+    loc_fake = Faker(pack["faker_locale"]) if pack["faker_locale"] else fake
 
     # ---- provider pool (shared by encounters, notes, FHIR practitioners) ----
     providers = []
@@ -143,14 +249,14 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
             "npi": cn.safe_npi(),
         })
 
-    # ---- patients -----------------------------------------------------------
+    # ---- patients (locale-aware) --------------------------------------------
     patients = []
     edge_every = max(1, n_patients // 12)
     for i in range(n_patients):
-        if i % edge_every == 0 and EDGE_CASE_NAMES:
+        if locale == "us" and i % edge_every == 0 and EDGE_CASE_NAMES:
             first, last = EDGE_CASE_NAMES[(i // edge_every) % len(EDGE_CASE_NAMES)]
         else:
-            first, last = fake.first_name(), fake.last_name()
+            first, last = loc_fake.first_name(), loc_fake.last_name()
 
         age_bucket = _weighted([("pediatric", 0.05), ("young_adult", 0.40),
                                 ("middle", 0.35), ("senior", 0.20)])
@@ -168,14 +274,14 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
                                  ("Non-binary", 0.015), ("Unknown", 0.005)]),
             "race": _weighted(RACE_OPTIONS),
             "ethnicity": _weighted(ETHNICITY_OPTIONS),
-            "ssn": None if random.random() < 0.05 else _safe_ssn(),
+            "ssn": (None if random.random() < 0.05 else _safe_ssn()) if pack["ssn"] else None,
             "email": None if random.random() < 0.15 else cn.safe_email(first, last),
-            "phone": None if random.random() < 0.05 else _safe_phone(),
-            "address": fake.street_address(),
-            "city": fake.city(),
-            "state": fake.state_abbr(),
-            "zip": fake.zipcode(),
-            "preferred_language": _weighted(LANGUAGES),
+            "phone": None if random.random() < 0.05 else _locale_phone(locale),
+            "address": loc_fake.street_address(),
+            "city": loc_fake.city(),
+            "state": _locale_region(locale, loc_fake),
+            "zip": _locale_postal(locale, loc_fake),
+            "preferred_language": _weighted(pack["languages"]),
             "deceased_flag": random.random() < 0.03,
         })
 
@@ -183,12 +289,14 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
     encounters = []
     enc_seq = 0
     for p in patients:
+        # encounters must fall within the patient's lifetime (pediatric-safe):
+        # bound the total look-back (days+hours+minutes) by seconds since birth
+        dob_dt = datetime.combine(date.fromisoformat(p["dob"]), datetime.min.time())
+        alive_seconds = max(3600, int((datetime.now() - dob_dt).total_seconds()))
         for _ in range(_weighted(encounters_per_patient)):
             enc_seq += 1
             enc_type = _weighted(ENCOUNTER_TYPES)
-            admit = datetime.now() - timedelta(
-                days=random.randint(1, 730), hours=random.randint(0, 23),
-                minutes=random.randint(0, 59))
+            admit = datetime.now() - timedelta(seconds=random.uniform(3600, alive_seconds))
             lo, hi = LOS_HOURS[enc_type]
             discharge = (admit + timedelta(hours=random.randint(lo, hi))
                          if random.random() > 0.05 else None)
@@ -208,36 +316,105 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
     # ---- diagnoses (linked to encounters) -----------------------------------
     diagnoses = []
     dx_seq = 0
-    enc_principal = {}  # encounter_id -> principal condition name (for notes/FHIR)
+    enc_principal = {}   # encounter_id -> principal condition name (for notes/labs/FHIR)
+    enc_conditions = {}  # encounter_id -> [condition names]
+    enc_dx_onset = {}    # (encounter_id, condition) -> onset date or None
     for e in encounters:
         n_dx = random.choices([1, 2, 3], weights=[0.55, 0.30, 0.15])[0]
         chosen = random.sample(list(CONDITIONS.keys()), k=min(n_dx, len(CONDITIONS)))
+        enc_conditions[e["encounter_id"]] = chosen
         for j, cond in enumerate(chosen):
             dx_seq += 1
-            onset = (e["_admit_dt"] - timedelta(days=random.randint(1, 1825))).date()
+            onset = (e["_admit_dt"] - timedelta(days=random.randint(1, 1825))).date() if random.random() > 0.2 else None
+            enc_dx_onset[(e["encounter_id"], cond)] = onset
             diagnoses.append({
                 "diagnosis_id": dx_seq,
                 "encounter_id": e["encounter_id"],
                 "icd10_code": CONDITIONS[cond]["icd10"],
                 "description": cond,
                 "dx_type": "Principal" if j == 0 else "Secondary",
-                "onset_date": onset.isoformat() if random.random() > 0.2 else None,
+                "onset_date": onset.isoformat() if onset else None,
             })
             if j == 0:
                 enc_principal[e["encounter_id"]] = cond
 
-    # ---- lab results (linked to encounters) ---------------------------------
+    # ---- medications (correlated with diagnoses, temporally consistent) ------
+    # Each med belongs to one of the encounter's conditions; start_date is on or
+    # after that diagnosis's onset date, and on/before the admit date.
+    medications = []
+    med_seq = 0
+    prov_by_id = {pr["provider_id"]: pr for pr in providers}
+    for e in encounters:
+        for cond in enc_conditions[e["encounter_id"]]:
+            for med in random.sample(CONDITIONS[cond]["meds"],
+                                     k=random.choices([1, 1, 2], weights=[0.5, 0.3, 0.2])[0]):
+                med_seq += 1
+                onset = enc_dx_onset.get((e["encounter_id"], cond))
+                # a medication string may be shared by several conditions
+                # (e.g., sertraline: MDD + GAD) — never start it before the
+                # earliest KNOWN onset among the conditions that share it
+                shared_known = [
+                    enc_dx_onset[(e["encounter_id"], c)]
+                    for c in enc_conditions[e["encounter_id"]]
+                    if med in CONDITIONS[c]["meds"]
+                    and enc_dx_onset.get((e["encounter_id"], c))
+                ]
+                earliest = (min(shared_known) if shared_known
+                            else (onset or (e["_admit_dt"] - timedelta(days=900)).date()))
+                latest = min(e["_admit_dt"].date(), date.today())
+                if earliest > latest:
+                    earliest = latest
+                span = max(1, (latest - earliest).days)
+                start = earliest + timedelta(days=random.randint(0, span))
+                active = random.random() < 0.65
+                end = None if active else start + timedelta(days=random.randint(30, 500))
+                if end and end > date.today():
+                    end = date.today()
+                medications.append({
+                    "med_id": med_seq,
+                    "encounter_id": e["encounter_id"],
+                    "patient_id": e["patient_id"],
+                    "medication": med,
+                    "start_date": start.isoformat(),
+                    "end_date": end.isoformat() if end else None,
+                    "status": "Active" if active else
+                              random.choice(["Discontinued", "Completed"]),
+                    "prescriber_id": e["attending_provider_id"],
+                })
+
+    # ---- lab results (condition-correlated when possible) --------------------
     labs = []
     lab_seq = 0
+    lab_defs_by_loinc = {d[0]: d for d in LAB_DEFS}
     for e in encounters:
-        for _ in range(random.choices([0, 1, 2, 3], weights=[0.25, 0.40, 0.25, 0.10])[0]):
+        n_labs = random.choices([0, 1, 2, 3], weights=[0.25, 0.40, 0.25, 0.10])[0]
+        # condition-relevant labs first (values biased to the dx), then filler
+        relevant = []
+        for cond in enc_conditions[e["encounter_id"]]:
+            relevant.extend(CONDITION_LABS.get(cond, []))
+        picks = []
+        if relevant:
+            k = min(n_labs, len(relevant))
+            picks = [("c", t) for t in random.sample(relevant, k=k)]
+        for _ in range(n_labs - len(picks)):
+            picks.append(("g", random.choice(LAB_DEFS)))
+
+        for kind, pick in picks:
             lab_seq += 1
-            loinc, name, unit, ref_lo, ref_hi, abs_lo, abs_hi = random.choice(LAB_DEFS)
-            if random.random() < 0.10:
-                value = round(random.uniform(abs_lo, ref_lo) if random.random() < 0.5
-                              else random.uniform(ref_hi, abs_hi), 2)
-            else:
-                value = round(random.uniform(ref_lo, ref_hi), 2)
+            if kind == "c":  # condition lab with bias range
+                loinc, name, unit, ref_lo, ref_hi, bias_lo, bias_hi = pick
+                # 65% of the time the value lands in the condition-biased range
+                if random.random() < 0.65:
+                    value = round(random.uniform(bias_lo, bias_hi), 2)
+                else:
+                    value = round(random.uniform(ref_lo, ref_hi), 2)
+            else:            # generic LAB_DEF tuple
+                loinc, name, unit, ref_lo, ref_hi, abs_lo, abs_hi = pick
+                if random.random() < 0.10:
+                    value = round(random.uniform(abs_lo, ref_lo) if random.random() < 0.5
+                                  else random.uniform(ref_hi, abs_hi), 2)
+                else:
+                    value = round(random.uniform(ref_lo, ref_hi), 2)
             if random.random() < 0.05:
                 value = None
             flag = "N"
@@ -279,13 +456,22 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
             principal = enc_principal.get(e["encounter_id"])
             if principal is None:
                 principal = random.choice(list(CONDITIONS.keys()))
+            enc_conds = enc_conditions[e["encounter_id"]]
+            secondary = enc_conds[1] if len(enc_conds) > 1 else None
 
             window_end = e["_discharge_dt"] or (e["_admit_dt"] + timedelta(hours=2))
-            span = max(1, int((window_end - e["_admit_dt"]).total_seconds()))
+            # keep notes at least one minute before discharge so minute-level
+            # timestamp truncation can never place them after the encounter
+            span = max(0, int((window_end - e["_admit_dt"]).total_seconds()) - 60)
             service_dt = e["_admit_dt"] + timedelta(seconds=random.randint(0, span))
 
             note_type = random.choice(cn.NOTE_TYPES)
-            dictation = random.random() < dictation_ratio
+            # behavioral-health notes only when the encounter carries a BH dx
+            if note_type == "behavioral_health_note" and not (
+                    set(enc_conditions[e["encounter_id"]]) & cn.BH_CONDITIONS):
+                note_type = random.choice([t for t in cn.NOTE_TYPES
+                                           if t != "behavioral_health_note"])
+            dictation = random.random() < dictation_ratio and note_type not in cn.NON_DICTATABLE
 
             ctx = cn.make_context(
                 fake, note_seq,
@@ -310,9 +496,10 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
                 provider=provider["display"],
                 provider_short=provider["display_short"],
                 npi=provider["npi"],
-                # the encounter's actual principal diagnosis
+                # the encounter's actual principal + secondary diagnoses
                 primary=principal,
                 primary_detail=CONDITIONS[principal],
+                secondary=secondary,
             )
             text, spans = cn.build_note(ctx, note_type, dictation=dictation)
 
@@ -346,6 +533,7 @@ def generate_clinical_cohort(n_patients: int = 100, fake: Faker = None,
         "patients": pd.DataFrame(patients),
         "encounters": pd.DataFrame(encounters),
         "diagnoses": pd.DataFrame(diagnoses),
+        "medications": pd.DataFrame(medications),
         "lab_results": pd.DataFrame(labs),
         "clinical_notes": pd.DataFrame(notes),
     }
@@ -366,6 +554,7 @@ def check_integrity(cohort: dict) -> list:
     patients = cohort["patients"]
     encounters = cohort["encounters"]
     diagnoses = cohort["diagnoses"]
+    medications = cohort.get("medications")
     labs = cohort["lab_results"]
     notes = cohort["clinical_notes"]
 
@@ -373,6 +562,7 @@ def check_integrity(cohort: dict) -> list:
     enc_ids = set(encounters["encounter_id"])
     enc_patient = dict(zip(encounters["encounter_id"], encounters["patient_id"]))
     enc_discharge = dict(zip(encounters["encounter_id"], encounters["discharge_datetime"]))
+    enc_admit = dict(zip(encounters["encounter_id"], encounters["admit_datetime"]))
 
     bad = [e for e in encounters["patient_id"] if e not in pat_ids]
     if bad:
@@ -385,6 +575,30 @@ def check_integrity(cohort: dict) -> list:
     bad = [l for l in labs["encounter_id"] if l not in enc_ids]
     if bad:
         errors.append(f"{len(bad)} labs reference unknown encounters")
+
+    if medications is not None and len(medications):
+        cond_meds = {name: set(detail["meds"]) for name, detail in CONDITIONS.items()}
+        for _, m in medications.iterrows():
+            enc_id = m["encounter_id"]
+            if enc_id not in enc_ids:
+                errors.append(f'MED-{m["med_id"]} references unknown encounter')
+                continue
+            if m["patient_id"] != enc_patient.get(enc_id):
+                errors.append(f'MED-{m["med_id"]} patient_id does not match its encounter')
+            if m["start_date"] > enc_admit[enc_id][:10]:
+                errors.append(f'MED-{m["med_id"]} starts after admit')
+            if m["end_date"] and m["end_date"] < m["start_date"]:
+                errors.append(f'MED-{m["med_id"]} ends before it starts')
+            # correlation + temporal consistency against matching diagnoses
+            enc_dx = diagnoses[diagnoses["encounter_id"] == enc_id]
+            matching = [d for _, d in enc_dx.iterrows()
+                        if m["medication"] in cond_meds.get(d["description"], set())]
+            if not matching:
+                errors.append(f'MED-{m["med_id"]} medication not correlated with encounter dx')
+            else:
+                onsets = [d["onset_date"] for d in matching if d["onset_date"]]
+                if onsets and m["start_date"] < min(onsets):
+                    errors.append(f'MED-{m["med_id"]} starts before its earliest dx onset')
 
     for _, n in notes.iterrows():
         if n["encounter_id"] and n["encounter_id"] not in enc_ids:
@@ -411,6 +625,92 @@ def check_integrity(cohort: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Dirty data mode — the things that break real pipelines
+# ---------------------------------------------------------------------------
+
+def apply_dirty_mode(cohort: dict) -> dict:
+    """Degrade a clean cohort with realistic data-quality problems.
+
+    Mutates and returns the cohort. Run AFTER check_integrity() — dirty mode
+    intentionally breaks formatting consistency (not referential integrity):
+    duplicate rows, mixed date formats, whitespace/casing drift, empty strings
+    vs NULLs, ZIP+4 mixing, and OCR-ish character damage in note text.
+    """
+    import numpy as np
+
+    patients = cohort["patients"]
+
+    # ~1% exact duplicate patient rows (pending-merge scenarios)
+    n_dup = max(1, len(patients) // 100) if len(patients) >= 20 else 0
+    if n_dup:
+        dups = patients.sample(n=n_dup, random_state=random.randint(0, 9999))
+        cohort["patients"] = patients = pd.concat(
+            [patients, dups], ignore_index=True)
+
+    # mixed DOB formats: ISO → MM/DD/YYYY or YYYYMMDD (~8%)
+    def _messy_dob(v):
+        if not v or random.random() > 0.08:
+            return v
+        d = date.fromisoformat(v)
+        return random.choice([d.strftime("%m/%d/%Y"), d.strftime("%Y%m%d")])
+    patients["dob"] = patients["dob"].map(_messy_dob)
+
+    # whitespace + casing drift on names
+    def _messy_name(v):
+        if not isinstance(v, str) or not v:
+            return v
+        r = random.random()
+        if r < 0.04:
+            return v + " "
+        if r < 0.07:
+            return " " + v
+        if r < 0.11:
+            return v.lower()
+        return v
+    for col in ("first_name", "last_name"):
+        patients[col] = patients[col].map(_messy_name)
+
+    # ZIP+4 for ~6% (US-style postcodes only)
+    def _messy_zip(v):
+        if isinstance(v, str) and v.isdigit() and len(v) == 5 and random.random() < 0.35:
+            return f"{v}-{random.randint(1000, 9999)}"
+        return v
+    patients["zip"] = patients["zip"].map(_messy_zip)
+
+    # empty strings instead of NULL for a few phones
+    ph = patients["phone"]
+    mask = ph.isna() & (np.random.rand(len(ph)) < 0.4)
+    patients.loc[mask, "phone"] = ""
+
+    # mixed admit formats in encounters (~6%)
+    enc = cohort["encounters"]
+    def _messy_ts(v):
+        if not v or random.random() > 0.06:
+            return v
+        d = datetime.fromisoformat(v)
+        return d.strftime("%m/%d/%Y %H:%M")
+    enc["admit_datetime"] = enc["admit_datetime"].map(_messy_ts)
+
+    # OCR-ish damage in ~6% of notes (rn→m, cl→d, ii→u, stray spacing)
+    notes = cohort["clinical_notes"]
+    _OCR_SUBS = [("rn", "m"), ("cl", "d"), ("ii", "u"), ("tt", "t")]
+    def _ocr_damage(text):
+        if not isinstance(text, str) or random.random() > 0.06:
+            return text
+        sub = random.choice(_OCR_SUBS)
+        words = text.split(" ")
+        hit = False
+        for i, w in enumerate(words):
+            if len(w) > 3 and sub[0] in w and random.random() < 0.25:
+                words[i] = w.replace(sub[0], sub[1], 1)
+                hit = True
+        return " ".join(words) if hit else text
+    notes["note_text"] = notes["note_text"].map(_ocr_damage)
+
+    return cohort
+
+
+# ---------------------------------------------------------------------------
 # Manifest
 # ---------------------------------------------------------------------------
 
@@ -427,6 +727,8 @@ def build_manifest(args, cohort: dict, extra: dict = None) -> dict:
             "format": args.format,
             "n_patients_requested": args.rows,
             "dictation_ratio": args.dictation_ratio,
+            "locale": getattr(args, "locale", "us"),
+            "dirty_mode": bool(getattr(args, "dirty", False)),
             "versions": versions,
         },
         "tables": {name: len(df) for name, df in cohort.items()},
@@ -498,6 +800,15 @@ _REAL_EMAIL_DOMAINS = {
     "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
 }
 _SAFED = {"example.com", "example.org", "example.net", "test.invalid", "example.edu"}
+_SAFE_TLDS = (".example", ".invalid", ".test", ".localhost")
+
+
+def _safe_domain(d: str) -> bool:
+    """Exact reserved domains, reserved TLDs, and their subdomains are safe."""
+    d = d.lower()
+    return (d in _SAFED
+            or any(d.endswith(t) for t in _SAFE_TLDS)
+            or any(d.endswith("." + s) for s in _SAFED))
 _SSN_RE = re.compile(r"\b(\d{3})-(\d{2})-(\d{4})\b")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@([\w-]+\.[\w.-]+)\b")
 _PHONE_RE = re.compile(r"\b(\d{3})[-.)]?\s*(\d{3})[-.]\s*(\d{4})\b")
@@ -517,7 +828,7 @@ def validate(text: str) -> dict:
         d = domain.lower()
         if d in _REAL_EMAIL_DOMAINS:
             results["critical"].append(f"Real email domain: @{d}")
-        elif d not in _SAFED:
+        elif not _safe_domain(d):
             results["warnings"].append(f"Unrecognized email domain: @{d}")
     for _, exch, num in _PHONE_RE.findall(text):
         if not (exch == "555" and num.startswith("01")):
@@ -566,6 +877,12 @@ def main() -> int:
     parser.add_argument("--no-notes", action="store_true", help="Skip note generation")
     parser.add_argument("--dictation-ratio", type=float, default=0.35,
                         help="Fraction of notes rendered as raw dictation (default: 0.35)")
+    parser.add_argument("--locale", choices=list(LOCALES.keys()), default="us",
+                        help="Locale pack: localized names/addresses/phones with "
+                             "region-appropriate fictional ranges (default: us)")
+    parser.add_argument("--dirty", action="store_true",
+                        help="Apply realistic data-quality problems (duplicate rows, mixed "
+                             "date formats, whitespace/casing drift, OCR-ish note damage)")
     parser.add_argument("--zip", action="store_true",
                         help="Also write synthetic_clinical_bundle.zip with all files")
     parser.add_argument("--validate", action="store_true",
@@ -576,15 +893,22 @@ def main() -> int:
     Faker.seed(args.seed)
     fake = Faker()
 
-    print(f"Generating clinical cohort: {args.rows} patients (seed={args.seed})")
+    print(f"Generating clinical cohort: {args.rows} patients (seed={args.seed}, "
+          f"locale={args.locale})")
     cohort = generate_clinical_cohort(
         args.rows, fake,
         dictation_ratio=args.dictation_ratio,
-        with_notes=not args.no_notes)
+        with_notes=not args.no_notes,
+        locale=args.locale)
 
     integrity = check_integrity(cohort)
     for err in integrity:
         print(f"  INTEGRITY: {err}", file=sys.stderr)
+
+    if args.dirty:
+        apply_dirty_mode(cohort)
+        print("  Dirty data mode applied — formats intentionally inconsistent "
+              "(integrity was verified on clean data first).")
 
     manifest = build_manifest(args, cohort)
     print("  " + " | ".join(f"{k}: {len(v)} rows" for k, v in cohort.items()))

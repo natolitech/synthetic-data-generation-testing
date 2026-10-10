@@ -167,11 +167,16 @@ python scripts/clinical_bundle.py -n 250 --format fhir
 python scripts/clinical_bundle.py -n 50 --format hl7
 ```
 
-Guarantees: encounters reference the same patient pool; diagnoses/labs/notes
-reference real encounters; note narrative embeds the actual patient identity and
-the encounter's principal diagnosis; DOB < admit < discharge and note times fall
-inside the encounter window. Every run writes `manifest.json` (seed, row counts,
-versions) for reproducibility, plus `clinical_notes_ground_truth.json`.
+Guarantees: encounters reference the same patient pool; diagnoses/meds/labs/notes
+reference real encounters; medications correlate with the encounter's diagnoses
+(start dates follow onset); labs are condition-biased; note narrative embeds the
+actual patient identity and the encounter's principal diagnosis; DOB < admit <
+discharge and note times fall inside the encounter window. Locale packs
+(`--locale us|uk|ca|eu`) localize names/addresses/phones with region-appropriate
+fictional ranges; dirty mode (`--dirty`) adds realistic data-quality problems
+after integrity verification. Every run writes `manifest.json` (seed, row counts,
+versions, locale, dirty flag) for reproducibility, plus
+`clinical_notes_ground_truth.json`.
 
 ### Step D — Deliver
 

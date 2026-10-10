@@ -642,14 +642,20 @@ DOMAIN_TABLES = {
 }
 
 
-BUNDLE_TABLE_ORDER = ["patients", "encounters", "diagnoses", "lab_results", "clinical_notes"]
+BUNDLE_TABLE_ORDER = ["patients", "encounters", "diagnoses", "medications",
+                      "lab_results", "clinical_notes"]
 
 
 def _render_bundle(n_patients: int, seed: int, output_format: str, fake):
     """Generate + render the referentially-linked clinical dataset."""
-    with st.spinner(f"Generating linked cohort ({n_patients} patients)..."):
-        cohort = clinical_bundle.generate_clinical_cohort(n_patients, fake)
+    locale = st.session_state.get("bundle_locale", "us")
+    dirty = st.session_state.get("bundle_dirty", False)
+
+    with st.spinner(f"Generating linked cohort ({n_patients} patients, locale={locale})..."):
+        cohort = clinical_bundle.generate_clinical_cohort(n_patients, fake, locale=locale)
         integrity = clinical_bundle.check_integrity(cohort)
+        if dirty:
+            clinical_bundle.apply_dirty_mode(cohort)
 
     total_rows = sum(len(df) for df in cohort.values())
     if integrity:
@@ -657,8 +663,11 @@ def _render_bundle(n_patients: int, seed: int, output_format: str, fake):
             st.error(f"INTEGRITY: {err}")
     else:
         st.success(f"Generated {total_rows} rows across {len(cohort)} linked tables "
-                   f"({n_patients} patients, seed={seed}) — referential integrity verified: "
-                   "encounters→patients, dx/labs/notes→encounters, note identity & timeline match.")
+                   f"({n_patients} patients, seed={seed}, locale={locale}"
+                   + (", dirty mode" if dirty else "")
+                   + ") — referential integrity verified: encounters→patients, "
+                     "dx/meds/labs/notes→encounters, note identity & timeline match."
+                   + (" Dirty mode applied after verification." if dirty else ""))
 
     # per-table previews
     for name in BUNDLE_TABLE_ORDER:
@@ -675,9 +684,12 @@ def _render_bundle(n_patients: int, seed: int, output_format: str, fake):
     st.markdown("#### Downloads")
     dl_cols = st.columns(3)
 
+    locale_lbl = clinical_bundle.LOCALES.get(locale, {}).get("label", locale)
+
     manifest = {
         "_meta": {"generated_by": "synth-data-gen demo_app bundle", "synthetic": True,
-                  "seed": seed, "n_patients": n_patients,
+                  "seed": seed, "n_patients": n_patients, "locale": locale,
+                  "dirty_mode": dirty,
                   "timestamp": datetime.now().isoformat(timespec="seconds")},
         "tables": {k: len(v) for k, v in cohort.items()},
     }
@@ -758,6 +770,16 @@ def main():
     domain = st.sidebar.selectbox("Domain", list(DOMAIN_TABLES.keys()))
     tables = DOMAIN_TABLES[domain]
     table_name = st.sidebar.selectbox("Table", list(tables.keys()))
+
+    if tables[table_name][0] == "clinical_bundle" and clinical_bundle is not None:
+        st.sidebar.selectbox(
+            "Locale", list(clinical_bundle.LOCALES.keys()), key="bundle_locale",
+            help="Localized names/addresses/phones with region-appropriate "
+                 "fictional ranges (non-US patients have no SSN)")
+        st.sidebar.toggle(
+            "Dirty data mode", key="bundle_dirty",
+            help="Duplicate rows, mixed date formats, whitespace/casing drift, "
+                 "OCR-ish note damage — applied after integrity verification")
 
     row_count = st.sidebar.slider("Rows", min_value=5, max_value=5000, value=50, step=5,
                                   help="Bundle mode uses this as the patient count; child table "

@@ -1,10 +1,9 @@
 # Improvement Plan — Synthetic Data Generation Toolkit
 
-Status: **Phase 1 + Phase 2 delivered.** Phase 2 shipped: referentially-linked
-bundles (`clinical_bundle.py`), FHIR R4 + HL7 v2.5.1 export (`fhir_export.py`,
-`hl7_export.py`), in-app generator overrides (schema_app), volume cap 500→5000,
-zip downloads in both apps, and generation manifests (bundle CLI + `--manifest`
-flag on the schema CLI). Remaining Phase 2 polish and Phases 3–5 below.
+Status: **Phase 1 + 2 + 3 delivered.** Phase 3 shipped: correlated medications table +
+condition-biased labs, DOB↔age reconciliation, four new narrative PHI types
+(radiology, behavioral health w/ 42 CFR Part 2, portal messages, call transcripts),
+locale packs (us/uk/ca/eu), and dirty-data mode. Remaining polish and Phases 4–5 below.
 Everything is a living roadmap; items are ordered by value-to-effort.
 
 ---
@@ -32,13 +31,15 @@ Everything is a living roadmap; items are ordered by value-to-effort.
 
 **Phase 2 leftovers (small):** progress bars for >1k note generation; FHIR output for non-clinical domains (out of scope by design); manifest download button in single-table app modes.
 
-## Phase 3 — Data realism
+## Phase 3 — Data realism ✅ delivered (Oct 2026)
 
-7. **Correlated columns.** Diagnoses ↔ medications ↔ abnormal labs ↔ note narrative should agree (the notes generator already does this internally; extend the model to tabular generators).
-8. **Temporal consistency.** DOB ↔ age, admit ↔ discharge ordering, medication start dates after diagnosis dates.
-9. **More narrative PHI flavors**: radiology reports, phone-call transcripts (scheduling/Referral), patient portal messages, behavioral health notes (42 CFR Part 2 sensitivity testing), non-English dictation fragments.
-10. **Locale packs.** Non-US names/phones/postcodes with per-region safe ranges (UK, EU, CA) behind a `--locale` flag.
-11. **Realistic dirty data mode.** Duplicate rows, mixed date formats, trailing whitespace, inconsistent casing, OCR-ish artifacts in notes — the things that break pipelines in production.
+7. **Correlated columns.** ✅ New `medications` table in the bundle: meds drawn from the encounter's actual diagnoses with temporal consistency (`start_date` ≥ matching dx onset, ≤ admit; `end_date` ≥ start or NULL; status Active/Discontinued/Completed). Labs are now condition-correlated with biased values (diabetes → HbA1c/glucose high ~65% of the time, pneumonia → WBC high, etc.). `check_integrity()` verifies med↔dx correlation and all temporal orderings every run.
+8. **Temporal consistency.** ✅ DOB↔age reconciliation in both schema tools (`_reconcile_age`): a table with both `dob` and `age` columns derives age from DOB. Med onset ordering above; note-in-encounter-window checks shipped in Phase 2.
+9. **More narrative PHI flavors.** ✅ Four new note types: **radiology report** (exam/technique/findings/impression correlated with the dx, dictatable), **behavioral health note** (42 CFR Part 2 banners for SUD, MSE, crisis resources — gated to encounters with BH/SUD dx), **patient portal message** (patient-written, typos, DOB/phone/address PHI), **phone call transcript** (identity-verification dialog). Non-English (Spanish) interpreter/family-translator quotes appear across note types. Two new conditions (GAD F41.1, alcohol use disorder in remission F10.21) power the BH/SUD scenarios.
+10. **Locale packs.** ✅ `--locale us|uk|ca|eu` on the bundle CLI + demo-app bundle mode: localized Faker names/addresses, region-appropriate fictional ranges (UK Ofcom `01632 960xxx` + `ZZ99` postcodes; Canada NANP phones + unassigned `Z` FSA postcodes; EU synthetic `+49 30 5550-xxx`), per-locale language weights, NULL ssn for non-US patients. Manifest records the locale.
+11. **Realistic dirty data mode.** ✅ `--dirty` on the bundle CLI + demo-app toggle: ~1% duplicate patient rows, mixed date formats (ISO/MM-DD-YYYY/YYYYMMDD), whitespace/casing drift, ZIP+4 mixing, empty-string-vs-NULL, OCR-ish character damage in ~6% of notes. Applied strictly AFTER integrity verification; manifest records `dirty_mode: true`.
+
+**Phase 3 leftovers (small):** locale support for the standalone notes CLI and schema-driven tools (US-centric by design for now); more locales (AU, JP); dirty-mode dial (`--dirty-severity`).
 
 ## Phase 4 — Architecture & quality
 
