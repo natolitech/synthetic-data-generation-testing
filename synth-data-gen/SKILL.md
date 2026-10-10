@@ -149,6 +149,30 @@ named `note_text`, `dictation_text`, `progress_note`, `hpi`, `chief_complaint`,
 etc. in a DDL schema are also populated automatically by
 `generate_from_schema.py`.
 
+### Step C++ — Linked clinical bundle (full EHR dataset, FHIR/HL7)
+
+When the developer needs a *coherent multi-table dataset* (joys that actually
+join, timelines that line up) or interoperability fixtures, use the bundle
+generator instead of independent tables:
+
+```bash
+# 100 patients → encounters → diagnoses/labs/notes, CSV + manifest + zip
+python scripts/clinical_bundle.py -n 100 --validate --zip
+
+# FHIR R4 Bundle (Patient/Practitioner/Encounter/Condition/Observation/
+# DocumentReference — all internal references resolve) + per-type bundles
+python scripts/clinical_bundle.py -n 250 --format fhir
+
+# HL7 v2.5.1 ADT^A01 admit + ORU^R01 lab messages
+python scripts/clinical_bundle.py -n 50 --format hl7
+```
+
+Guarantees: encounters reference the same patient pool; diagnoses/labs/notes
+reference real encounters; note narrative embeds the actual patient identity and
+the encounter's principal diagnosis; DOB < admit < discharge and note times fall
+inside the encounter window. Every run writes `manifest.json` (seed, row counts,
+versions) for reproducibility, plus `clinical_notes_ground_truth.json`.
+
 ### Step D — Deliver
 
 Tell the developer:

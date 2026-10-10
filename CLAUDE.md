@@ -12,6 +12,7 @@ pip install -r requirements.txt
 ./run.sh demo                          # domain-based Streamlit app (:8501)
 ./run.sh schema                        # schema-driven Streamlit app (:8502)
 ./run.sh notes -n 50 --validate        # clinical notes / dictations CLI
+./run.sh bundle -n 100 --zip --validate  # linked clinical dataset (5 tables, FHIR/HL7 capable)
 ./run.sh gen schema/ --rows 100 --validate
 ./run.sh validate synthetic_output/
 ./run.sh doctor                        # environment check
@@ -35,6 +36,11 @@ python synth-data-gen/scripts/generate_from_schema.py schema/ --format sql --out
 python clinical_notes.py -n 50 --validate --ground-truth
 python clinical_notes.py -n 25 -t dictation_transcript -f txt
 
+# Linked clinical dataset: patients → encounters → diagnoses/labs/notes
+python clinical_bundle.py -n 100 --validate --zip        # CSV + manifest
+python clinical_bundle.py -n 250 --format fhir            # FHIR R4 bundles
+python clinical_bundle.py -n 50 --format hl7              # HL7 v2.5.1 ADT/ORU
+
 # Generate patient data (standalone CLI)
 python example_patient_generator.py -n 100 -f csv
 python example_patient_generator.py -n 500 -f json --validate
@@ -50,9 +56,12 @@ The project has three layers:
 
 **1. Standalone tools** (root directory)
 
-- `demo_app.py` — Streamlit app with six hardcoded domain generators (Clinical, Student, HR, IAM, Research, Financial). All generation logic lives here as plain functions. Supports CSV, JSON, SQL INSERT, and Parquet output. Has four output tabs: Preview, Raw Output, Validation, Statistics. The Clinical domain includes notes/dictations via `clinical_notes.py` (tables with a `note_text` column get per-note expanders).
-- `schema_app.py` — Streamlit app that accepts any SQL DDL (paste or upload). Parses `CREATE TABLE` statements, maps column names to semantic generators, shows a preview of inferred generators before generation, and supports single-table or all-tables-with-FK-integrity mode. Same four output tabs.
-- `clinical_notes.py` — CLI + importable module generating synthetic physician notes (progress, H&P, discharge summary, ED, telehealth, procedure) rendered as transcribed notes or raw dictation transcripts (spoken punctuation, disfluencies, `[inaudible]`). Embeds safe-range PHI and records **ground-truth PHI spans** (type + char offsets) for de-identification scoring. `NoteBuilder` assembles segments; `generate_note()` / `generate_notes_dataframe()` / `generate_clinical_notes(n, fake)` (demo-app alias) are the public API.
+- `demo_app.py` — Streamlit app with six hardcoded domain generators (Clinical, Student, HR, IAM, Research, Financial). All generation logic lives here as plain functions. Supports CSV, JSON, SQL INSERT, and Parquet output. Has four output tabs: Preview, Raw Output, Validation, Statistics. The Clinical domain includes notes/dictations via `clinical_notes.py` (tables with a `note_text` column get per-note expanders) and **Full Dataset — linked** mode (renders via `_render_bundle()`: linked cohort, integrity badge, zip + FHIR downloads). Row cap 5000.
+- `schema_app.py` — Streamlit app that accepts any SQL DDL (paste or upload). Parses `CREATE TABLE` statements, maps column names to semantic generators, shows an **editable generator grid** (`st.data_editor` + `GENERATOR_REGISTRY`, ~30 generators; PK/FK locked) before generation, and supports single-table or all-tables-with-FK-integrity mode (multi-table runs get a zip download with manifest). Same four output tabs. `_generate_value(col, fake, fk_pool, row_idx, override=None)` applies manual overrides.
+- `clinical_notes.py` — CLI + importable module generating synthetic physician notes (progress, H&P, discharge summary, ED, telehealth, procedure) rendered as transcribed notes or raw dictation transcripts (spoken punctuation, disfluencies, `[inaudible]`). Embeds safe-range PHI and records **ground-truth PHI spans** (type + char offsets) for de-identification scoring. `NoteBuilder` assembles segments; `make_context(fake, i, **overrides)` + `build_note(ctx, note_type, dictation)` are the composition API used by `clinical_bundle.py`; `generate_note()` / `generate_notes_dataframe()` / `generate_clinical_notes(n, fake)` (demo-app alias) wrap them.
+- `clinical_bundle.py` — Referentially-linked cohort generator + CLI. One shared patient/provider pool feeds encounters → diagnoses/labs/notes; note identity, principal dx, and service times match their encounter (`DOB < admit < discharge`, note inside window). `check_integrity()` verifies every guarantee per run. Outputs CSV/JSON/SQL/FHIR/HL7 + `manifest.json` + optional zip. Uses `clinical_notes.make_context/build_note` for narrative consistency.
+- `fhir_export.py` — FHIR R4 serializers (Patient, Practitioner, Encounter, Condition, Observation, DocumentReference with base64 note payloads) per `format-templates.md` conventions (urn:example: systems, relative references). `cohort_to_bundles()` yields a combined Bundle whose internal references all resolve, plus per-resource-type bundles.
+- `hl7_export.py` — HL7 v2.5.1 builders: ADT^A01 (MSH/EVN/PID/PV1/IN1) and ORU^R01 (MSH/PID/OBR/OBX…). Content is delimiter-escaped so messages are always well-formed; `cohort_to_hl7_messages()` yields ADT + ORU files.
 - `example_patient_generator.py` — Minimal CLI generator for the clinical patient domain. Reference implementation showing the expected script structure.
 - `validate_synthetic.py` — Multi-format PII/PHI validator. Checks SSN ranges, email domains, phone prefixes, IP ranges, NPI patterns, NULL distribution, and JSON synthetic markers.
 - `run.sh` — Entry point for all tools (`demo`, `schema`, `notes`, `gen`, `patient`, `validate`, `install-skill`, `doctor`, `update`). Auto-detects a Python with faker/pandas/streamlit (`PYTHON=` overrides).
@@ -64,6 +73,7 @@ The project has three layers:
 - `references/format-templates.md` — Output format specs for FHIR R4, HL7 v2.x, SQL, CSV, JSON, and Parquet. Claude reads this when FHIR or HL7 output is requested.
 - `scripts/generate_from_schema.py` — Standalone CLI script. Reads one or more DDL files, parses all `CREATE TABLE` statements, generates data in FK dependency order (parents before children), and writes one output file per table. Accepts `--rows`, `--seed`, `--format` (csv/json/sql), `--output`, `--tables`, `--validate`, `--list-tables`.
 - `scripts/clinical_notes.py` — Copy of the root notes/dictation generator (keep in sync with the root copy).
+- `scripts/clinical_bundle.py` — Copy of the root linked-bundle generator (+ `fhir_export.py`, `hl7_export.py` siblings; keep in sync).
 - `scripts/validate_synthetic.py` — Copy of the root-level validator for in-skill use.
 - `scripts/example_patient_generator.py` — Copy of the root-level patient generator.
 

@@ -718,6 +718,8 @@ def main() -> int:
                         help="Only generate these tables (default: all)")
     parser.add_argument("--validate", action="store_true",
                         help="Run PII/PHI validation after generation")
+    parser.add_argument("--manifest", action="store_true",
+                        help="Write manifest.json (seed, schema hash, versions, row counts)")
     parser.add_argument("--list-tables", action="store_true",
                         help="Print detected table names and exit")
     args = parser.parse_args()
@@ -796,6 +798,33 @@ def main() -> int:
                 print(f"    Validation passed — no real PII/PHI detected.")
 
     print(f"\nDone. Output in: {out_dir.resolve()}")
+
+    if args.manifest:
+        import hashlib
+        from datetime import datetime as _dt
+        schema_hash = hashlib.sha256(
+            "\n".join(p.read_text(encoding="utf-8", errors="replace")
+                      for p in sorted(schema_path.rglob("*.sql")) if p.is_file()
+                      ).encode("utf-8")).hexdigest() if schema_path.is_dir() else \
+            hashlib.sha256(schema_path.read_bytes()).hexdigest()
+        manifest = {
+            "_meta": {
+                "generated_by": "synth-data-gen generate_from_schema",
+                "synthetic": True,
+                "timestamp": _dt.now().isoformat(timespec="seconds"),
+                "seed": args.seed,
+                "rows_per_table": args.rows,
+                "format": args.format,
+                "schema_sha256": schema_hash,
+                "versions": {"pandas": pd.__version__,
+                             "faker": __import__("importlib.metadata", fromlist=["version"]).version("faker")},
+            },
+            "tables": {name: len(df) for name, df in results.items()},
+        }
+        (out_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"Wrote manifest → {out_dir / 'manifest.json'}")
+
     if exit_code == 2:
         print("WARNING: Critical validation issues found. DO NOT use this data.", file=sys.stderr)
     elif exit_code == 1:

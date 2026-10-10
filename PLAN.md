@@ -1,7 +1,11 @@
 # Improvement Plan — Synthetic Data Generation Toolkit
 
-Status: **Phase 1 delivered** (clinical notes/dictations, `run.sh`, ground-truth PHI spans).
-Everything below is a living roadmap; items are ordered by value-to-effort within each phase.
+Status: **Phase 1 + Phase 2 delivered.** Phase 2 shipped: referentially-linked
+bundles (`clinical_bundle.py`), FHIR R4 + HL7 v2.5.1 export (`fhir_export.py`,
+`hl7_export.py`), in-app generator overrides (schema_app), volume cap 500→5000,
+zip downloads in both apps, and generation manifests (bundle CLI + `--manifest`
+flag on the schema CLI). Remaining Phase 2 polish and Phases 3–5 below.
+Everything is a living roadmap; items are ordered by value-to-effort.
 
 ---
 
@@ -17,14 +21,16 @@ Everything below is a living roadmap; items are ordered by value-to-effort withi
 
 ---
 
-## Phase 2 — Usability (highest user-facing value)
+## Phase 2 — Usability ✅ delivered (Oct 2026)
 
-1. **Referentially-linked bundles.** "Generate full dataset" produces patients → encounters → diagnoses → labs → notes that all reference the *same* patient pool and a consistent timeline (admit < discharge < note datetime). Today each table invents its own ID pool, so cross-table joins in the demo app are fiction.
-2. **In-app generator override.** In `schema_app.py`, let users click a column in the inferred-generator table and swap it (e.g., force `department` → custom list) before generating. Persist overrides per schema in `st.session_state`.
-3. **FHIR R4 / HL7 v2 output** in both apps. The format templates already exist in `synth-data-gen/references/format-templates.md`; the apps only emit CSV/JSON/SQL. FHIR `DocumentReference` for notes and `Patient`/`Encounter` resources would make this a real interoperability-test fixture generator.
-4. **Volume handling.** Raise the 500-row cap; chunk generation with a progress bar; warn on memory-heavy formats. Target: 50k rows in the UI, 1M+ via CLI.
-5. **Download-all / zip export** for multi-table runs (schema app + bundle mode).
-6. **Generation manifest.** Sidecar `manifest.json` per output directory: seed, schema hash, tool versions, timestamp, row counts — so any dataset can be reproduced or attributed later.
+1. **Referentially-linked bundles.** ✅ `clinical_bundle.py` generates patients → encounters → diagnoses → labs → notes from one shared pool: encounters reference real patients, note identity/dx/timeline match their encounter (DOB < admit < discharge, note time inside the window), and `check_integrity()` verifies it on every run. Exposed in the demo app as "Full Dataset — linked (5 tables)".
+2. **In-app generator override.** ✅ The schema-app preview table is now an editable grid — swap any column's generator via dropdown (~30 registered generators incl. note text, dictation, safe SSN/phone). PK/FK columns stay locked to preserve referential integrity; overrides persist in `st.session_state`.
+3. **FHIR R4 / HL7 v2 output.** ✅ `fhir_export.py` (Patient, Practitioner, Encounter, Condition, Observation, DocumentReference with base64 note payloads — all internal references resolve inside the combined Bundle) and `hl7_export.py` (ADT^A01 + ORU^R01 v2.5.1, delimiter-escaped). Available via `--format fhir|hl7` on the bundle CLI and as a FHIR download in the demo app's bundle mode. *Not* wired for arbitrary DDL schemas (resource mapping is clinical-specific by design).
+4. **Volume handling.** ✅ Row cap raised 500 → 5000 in both apps; CLI already unbounded. ⚠️ Remaining: chunked generation with a progress bar for very large note volumes.
+5. **Download-all / zip export.** ✅ Demo app bundle mode and schema-app all-tables mode both offer zip downloads (CSVs + manifest; demo zip also includes PHI ground truth). Bundle CLI has `--zip`.
+6. **Generation manifest.** ✅ Bundle CLI always writes `manifest.json` (seed, row counts, tool versions, timestamp); `generate_from_schema.py --manifest` adds schema SHA-256 for exact reproduction.
+
+**Phase 2 leftovers (small):** progress bars for >1k note generation; FHIR output for non-clinical domains (out of scope by design); manifest download button in single-table app modes.
 
 ## Phase 3 — Data realism
 

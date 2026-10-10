@@ -10,9 +10,10 @@ This project provides four ways to generate synthetic data:
 |------|-------------|
 | `run.sh` | **Start here** — one command to run everything (apps, CLIs, validation) |
 | `demo_app.py` | Interactive Streamlit UI — pick a built-in domain and generate data in your browser |
-| `schema_app.py` | Interactive Streamlit UI — paste or upload your own SQL schema and generate matching data |
+| `schema_app.py` | Interactive Streamlit UI — paste or upload your own SQL schema and generate matching data, with editable per-column generator overrides |
 | `generate_from_schema.py` | CLI script — point it at a `schema/` directory and it generates data for every table automatically |
 | `clinical_notes.py` | CLI — synthetic physician notes & dictation transcripts with embedded (safe-range) PHI and ground-truth PHI spans |
+| `clinical_bundle.py` | CLI — **referentially-linked** clinical dataset (patients → encounters → diagnoses/labs/notes) with FHIR R4 / HL7 v2.5.1 / CSV / JSON / SQL output, zip + manifest |
 
 All tools share the same safety guarantees and semantic column mapping. The Claude Code skill (`synth-data-gen/`) wraps these tools and invokes them automatically when you ask for test data in Claude Code. See [PLAN.md](PLAN.md) for the roadmap.
 
@@ -53,6 +54,7 @@ pip install -r requirements.txt
 ./run.sh demo      # domain-based Streamlit app  → http://localhost:8501
 ./run.sh schema    # schema-driven Streamlit app → http://localhost:8502
 ./run.sh notes -n 50 --validate --ground-truth   # clinical notes / dictations
+./run.sh bundle -n 100 --zip --validate          # linked clinical dataset (5 tables)
 ./run.sh gen schema/ --rows 200 --validate       # schema-driven CLI
 ./run.sh validate synthetic_output/              # PII/PHI validation
 ./run.sh doctor     # environment check
@@ -126,6 +128,33 @@ Schema-driven tools also pick up note columns automatically: `note_text`,
 `author`, `transcription_status` are all mapped semantically in
 `schema_app.py` and `generate_from_schema.py`.
 
+### Option 5 — Generate a linked clinical dataset (bundle, CLI)
+
+Single-table generators each invent their own ID pools — fine for fixtures, useless
+for testing joins. The bundle generator produces a **referentially-linked** dataset:
+
+```bash
+# 100 patients → encounters → diagnoses/labs/notes (CSV + manifest + zip)
+python clinical_bundle.py -n 100 --validate --zip
+
+# FHIR R4: combined Bundle (Patient/Practitioner/Encounter/Condition/
+# Observation/DocumentReference) + one bundle per resource type
+python clinical_bundle.py -n 250 --format fhir
+
+# HL7 v2.5.1: ADT^A01 admit + ORU^R01 lab result messages
+python clinical_bundle.py -n 50 --format hl7
+```
+
+**Guarantees** (checked by `check_integrity()` on every run):
+
+- every `encounter.patient_id` exists in patients; every diagnosis/lab/note references a real encounter
+- note `patient_id` equals its encounter's patient; note narrative embeds the actual patient name/MRN/DOB and the encounter's principal diagnosis
+- `DOB < admit < discharge`, and note service times fall inside the encounter window
+
+**Every run writes `manifest.json`** (seed, row counts, tool versions, timestamp) so
+the dataset can be reproduced exactly; `--zip` bundles everything, including the PHI
+ground truth, into one archive.
+
 ---
 
 ## The Two Streamlit Apps
@@ -139,7 +168,11 @@ Use when you want to generate data for a **standard enterprise domain** without 
 
 | Domain | Tables |
 |--------|--------|
-| Clinical / EHR | Patients, Encounters, Diagnoses, Lab Results, Clinical Notes / Dictations |
+| Clinical / EHR | Patients, Encounters, Diagnoses, Lab Results, Clinical Notes / Dictations, **Full Dataset — linked (5 tables)** |
+
+Selecting **Full Dataset — linked** generates a referentially-linked cohort
+(same guarantees as the bundle CLI) with per-table previews, an integrity badge,
+a zip download (CSV + manifest + PHI ground truth), and a FHIR R4 bundle download.
 | Student Records | Students, Course Enrollment |
 | Human Resources | Employees |
 | Identity & Access | User Accounts, Entitlements |
@@ -151,8 +184,8 @@ Use when you want to generate data for a **standard enterprise domain** without 
 Use when you have your **own database schema** and want data that matches it exactly.
 
 1. **Paste DDL** or upload a `.sql` file (or click "Load example schema" to try a sample)
-2. **Review the parsed schema** — a table shows each column, its SQL type, and the inferred generator so you can verify the mapping before generating
-3. **Choose single table or all tables** — multi-table mode resolves foreign keys in dependency order so joins work
+2. **Review the parsed schema** — an editable grid shows each column, its SQL type, and the inferred generator. **Override any column** from the dropdown (~30 generators: names, safe SSN/phone/email, note text, dictation transcripts, NULL, …). PK/FK columns stay locked to preserve referential integrity.
+3. **Choose single table or all tables** — multi-table mode resolves foreign keys in dependency order so joins work; a zip download (CSV + manifest) is offered for multi-table runs
 4. **Generate** — same four tabs as the demo app
 
 **Supported dialects:** PostgreSQL, MySQL, SQLite, SQL Server
@@ -205,6 +238,7 @@ Options:
   -o, --output DIR    Output directory (default: ./synthetic_output)
   -t, --tables T...   Only generate these tables (space-separated)
   --validate          Run PII/PHI validation after generation
+  --manifest          Write manifest.json (seed, schema SHA-256, versions, row counts)
   --list-tables       Print detected tables and exit
 
 Exit codes: 0=clean  1=warnings  2=critical issues  3=schema error
@@ -242,6 +276,27 @@ python clinical_notes.py [options]
   --validate            Run PII/PHI validation after generation
   --list-types          Print note types and exit
 ```
+
+### clinical_bundle.py
+
+Generates a referentially-linked synthetic clinical dataset with integrity guarantees.
+
+```
+python clinical_bundle.py [options]
+
+  -n, --rows N          Number of patients (default: 100). Encounters, diagnoses,
+                        labs, and notes scale from the patient pool.
+  -s, --seed N          Random seed (default: 42)
+  -f, --format          csv | json | sql | fhir | hl7  (default: csv)
+  -o, --output DIR      Output directory (default: ./synthetic_output)
+  --no-notes            Skip note generation
+  --dictation-ratio F   Fraction of notes as raw dictation (default: 0.35)
+  --zip                 Also write synthetic_clinical_bundle.zip
+  --validate            Run PII/PHI validation after generation
+```
+
+Every run writes `manifest.json`; `fhir` writes a combined Bundle plus per-resource-type
+bundles; `hl7` writes ADT^A01 and ORU^R01 message files.
 
 ### validate_synthetic.py
 
@@ -319,9 +374,12 @@ Either way, the skill validates all output before delivering it and states clear
 synthetic-data-generation-testing/
 │
 ├── run.sh                          # Single entry point for all tools
-├── demo_app.py                     # Streamlit UI — domain-based generation (6 built-in domains)
-├── schema_app.py                   # Streamlit UI — schema-driven generation (paste/upload DDL)
+├── demo_app.py                     # Streamlit UI — domain-based generation (6 built-in domains + linked bundle)
+├── schema_app.py                   # Streamlit UI — schema-driven generation with editable generator overrides
 ├── clinical_notes.py               # CLI — clinical notes & dictation transcripts with PHI spans
+├── clinical_bundle.py              # CLI — referentially-linked clinical dataset + manifest + zip
+├── fhir_export.py                  # FHIR R4 serializers (Patient/Encounter/Condition/Observation/DocumentReference)
+├── hl7_export.py                   # HL7 v2.5.1 message builders (ADT^A01, ORU^R01)
 ├── example_patient_generator.py    # CLI — standalone patient record generator (17 fields)
 ├── validate_synthetic.py           # CLI — PII/PHI validator for generated files
 ├── requirements.txt                # faker, pandas, streamlit
@@ -342,6 +400,9 @@ synthetic-data-generation-testing/
     └── scripts/
         ├── generate_from_schema.py # Schema-driven generator — reads DDL, outputs synthetic data
         ├── clinical_notes.py       # Clinical notes & dictation generator
+        ├── clinical_bundle.py      # Linked clinical dataset generator (+ manifest, zip)
+        ├── fhir_export.py          # FHIR R4 serializers
+        ├── hl7_export.py           # HL7 v2.5.1 message builders
         ├── validate_synthetic.py   # PII/PHI validator
         └── example_patient_generator.py  # Example generator script
 ```

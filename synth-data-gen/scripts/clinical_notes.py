@@ -263,6 +263,33 @@ def _make_context(i: int, fake: Faker) -> dict:
     }
 
 
+# --- public API for composing notes from external cohorts (clinical_bundle) ---
+
+def make_context(fake: Faker, i: int = 0, **overrides) -> dict:
+    """Build a note context with random defaults, then apply overrides.
+
+    Used by clinical_bundle.py to keep note identity/diagnosis/dates consistent
+    with the linked cohort. When `dob` is overridden, `age` is recomputed from it
+    unless explicitly provided.
+    """
+    ctx = _make_context(i, fake)
+    if "dob" in overrides and "age" not in overrides and "service_datetime" in overrides:
+        svc = overrides["service_datetime"]
+        dob = overrides["dob"]
+        overrides["age"] = svc.year - dob.year - (
+            (svc.month, svc.day) < (dob.month, dob.day))
+    ctx.update(overrides)
+    return ctx
+
+
+def build_note(ctx: dict, note_type: str, dictation: bool = False):
+    """Render a note for a pre-built context dict. Returns (text, spans)."""
+    if note_type not in _BUILDERS:
+        note_type = random.choice(NOTE_TYPES)
+    builder = _BUILDERS[note_type](ctx)
+    return builder.render(dictation=dictation)
+
+
 # ---------------------------------------------------------------------------
 # Section builders (shared across note types)
 # ---------------------------------------------------------------------------

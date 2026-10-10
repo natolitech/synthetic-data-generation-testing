@@ -8,6 +8,9 @@
 #   demo               Launch the domain-based Streamlit app (demo_app.py)
 #   schema             Launch the schema-driven Streamlit app (schema_app.py)
 #   notes              Generate clinical notes / dictations (clinical_notes.py)
+#   bundle             Generate a linked clinical dataset: patients →
+#                      encounters → diagnoses/labs/notes (clinical_bundle.py);
+#                      formats: csv|json|sql|fhir|hl7, --zip, --validate
 #   gen                Schema-driven CLI generator (generate_from_schema.py)
 #   patient            Standalone patient generator (example_patient_generator.py)
 #   validate <path>    Run PII/PHI validation on a file or directory
@@ -72,6 +75,12 @@ case "$CMD" in
         [[ -n "$PY" ]] || need_deps "$CMD"
         echo ">>> clinical_notes.py $*"
         exec "$PY" clinical_notes.py "$@"
+        ;;
+
+    bundle)
+        [[ -n "$PY" ]] || need_deps "$CMD"
+        echo ">>> clinical_bundle.py $*"
+        exec "$PY" clinical_bundle.py "$@"
         ;;
 
     gen)

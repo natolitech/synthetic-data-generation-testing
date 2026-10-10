@@ -14,6 +14,7 @@ import json
 import random
 import re
 import uuid
+import zipfile
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -24,8 +25,10 @@ from faker import Faker
 
 try:
     from clinical_notes import generate_clinical_notes
-except ImportError:  # pragma: no cover - module lives next to this script
+    import clinical_bundle
+except ImportError:  # pragma: no cover - modules live next to this script
     generate_clinical_notes = None
+    clinical_bundle = None
 
 # ---------------------------------------------------------------------------
 # Constants (from synth-data-gen skill references)
@@ -616,6 +619,7 @@ DOMAIN_TABLES = {
         "Diagnoses": ("clinical_diagnoses", generate_clinical_diagnoses),
         "Lab Results": ("clinical_labs", generate_clinical_labs),
         "Clinical Notes / Dictations": ("clinical_notes", generate_clinical_notes),
+        "Full Dataset — linked (5 tables)": ("clinical_bundle", None),
     },
     "Student Records": {
         "Students": ("students", generate_student_records),
@@ -638,6 +642,110 @@ DOMAIN_TABLES = {
 }
 
 
+BUNDLE_TABLE_ORDER = ["patients", "encounters", "diagnoses", "lab_results", "clinical_notes"]
+
+
+def _render_bundle(n_patients: int, seed: int, output_format: str, fake):
+    """Generate + render the referentially-linked clinical dataset."""
+    with st.spinner(f"Generating linked cohort ({n_patients} patients)..."):
+        cohort = clinical_bundle.generate_clinical_cohort(n_patients, fake)
+        integrity = clinical_bundle.check_integrity(cohort)
+
+    total_rows = sum(len(df) for df in cohort.values())
+    if integrity:
+        for err in integrity[:5]:
+            st.error(f"INTEGRITY: {err}")
+    else:
+        st.success(f"Generated {total_rows} rows across {len(cohort)} linked tables "
+                   f"({n_patients} patients, seed={seed}) — referential integrity verified: "
+                   "encounters→patients, dx/labs/notes→encounters, note identity & timeline match.")
+
+    # per-table previews
+    for name in BUNDLE_TABLE_ORDER:
+        df = cohort[name]
+        st.markdown(f"#### `{name}` — {len(df)} rows")
+        st.dataframe(df, use_container_width=True, height=250)
+        if name == "clinical_notes" and len(df):
+            with st.expander("Full note text (first 3)"):
+                for _, row in df.head(3).iterrows():
+                    st.markdown(f"**{row['note_id']} · {row['note_type']} · {row['patient_name']}**")
+                    st.text(row["note_text"])
+
+    # ---- downloads ----
+    st.markdown("#### Downloads")
+    dl_cols = st.columns(3)
+
+    manifest = {
+        "_meta": {"generated_by": "synth-data-gen demo_app bundle", "synthetic": True,
+                  "seed": seed, "n_patients": n_patients,
+                  "timestamp": datetime.now().isoformat(timespec="seconds")},
+        "tables": {k: len(v) for k, v in cohort.items()},
+    }
+
+    with dl_cols[0]:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name in BUNDLE_TABLE_ORDER:
+                zf.writestr(f"synthetic_{name}.csv", to_csv_string(cohort[name]))
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            zf.writestr("clinical_notes_ground_truth.json", json.dumps(
+                {"_meta": manifest["_meta"],
+                 "notes": {r["note_id"]: {"note_type": r["note_type"],
+                                          "phi_spans": json.loads(r["phi_spans"])}
+                           for _, r in cohort["clinical_notes"].iterrows()}},
+                indent=2, ensure_ascii=False))
+        st.download_button("📦 Download all (zip, CSV + manifest + PHI ground truth)",
+                           buf.getvalue(), file_name="synthetic_clinical_bundle.zip",
+                           mime="application/zip", use_container_width=True)
+
+    with dl_cols[1]:
+        try:
+            import fhir_export
+            _, bundle = next(fhir_export.cohort_to_bundles(cohort))
+            st.download_button("🏥 Download FHIR R4 Bundle (JSON)",
+                               json.dumps(bundle, indent=2, ensure_ascii=False),
+                               file_name="synthetic_fhir_bundle.json",
+                               mime="application/json", use_container_width=True)
+        except ImportError:
+            st.caption("FHIR export requires fhir_export.py")
+
+    with dl_cols[2]:
+        if output_format in ("CSV", "JSON", "SQL INSERT"):
+            first = cohort["patients"]
+            raw = {"CSV": lambda d: to_csv_string(d),
+                   "JSON": lambda d: to_json_string(d),
+                   "SQL INSERT": lambda d: to_sql_string(d, "patients")}[output_format](first)
+            st.download_button(f"Download patients ({output_format})",
+                               raw, file_name=f"synthetic_patients.{output_format.split()[0].lower()}",
+                               mime="text/plain", use_container_width=True)
+            st.caption("Zip download contains every table in CSV.")
+        else:
+            st.caption("Pick CSV/JSON/SQL in the sidebar for per-table raw output.")
+
+    # ---- validation + stats ----
+    tab_validate, tab_stats = st.tabs(["Validation", "Statistics"])
+    with tab_validate:
+        text = "\n".join(to_csv_string(cohort[n]) for n in BUNDLE_TABLE_ORDER)
+        results = validate_text(text)
+        for msg in results["critical"][:10]:
+            st.error(f"CRITICAL: {msg}")
+        for msg in results["warnings"][:10]:
+            st.warning(f"WARNING: {msg}")
+        for msg in results["info"][:10]:
+            st.info(msg)
+        if not results["critical"] and not results["warnings"]:
+            st.success("All checks passed — no real PII/PHI detected.")
+    with tab_stats:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Patients", len(cohort["patients"]))
+        c2.metric("Encounters", len(cohort["encounters"]))
+        c3.metric("Notes", len(cohort["clinical_notes"]))
+        stats_df = pd.DataFrame([
+            {"Table": n, "Rows": len(cohort[n]), "Columns": len(cohort[n].columns)}
+            for n in BUNDLE_TABLE_ORDER])
+        st.dataframe(stats_df, use_container_width=True, hide_index=True)
+
+
 def main():
     st.set_page_config(page_title="Synthetic Data Generator Demo", page_icon="🧪", layout="wide")
 
@@ -651,7 +759,9 @@ def main():
     tables = DOMAIN_TABLES[domain]
     table_name = st.sidebar.selectbox("Table", list(tables.keys()))
 
-    row_count = st.sidebar.slider("Rows", min_value=5, max_value=500, value=50, step=5)
+    row_count = st.sidebar.slider("Rows", min_value=5, max_value=5000, value=50, step=5,
+                                  help="Bundle mode uses this as the patient count; child table "
+                                       "sizes scale from it. Large note counts take longer.")
     seed = st.sidebar.number_input("Random Seed", min_value=0, max_value=999999, value=42)
     output_format = st.sidebar.selectbox("Output Format", ["Table Preview", "CSV", "JSON", "SQL INSERT"])
 
@@ -677,6 +787,16 @@ def main():
         fake = Faker()
 
         tbl_key, gen_fn = tables[table_name]
+
+        if tbl_key == "clinical_bundle":
+            if clinical_bundle is None:
+                st.error(
+                    "Bundle generation requires `clinical_bundle.py` (and "
+                    "`clinical_notes.py`) next to demo_app.py."
+                )
+                return
+            _render_bundle(row_count, seed, output_format, fake)
+            return
 
         if gen_fn is None:
             st.error(

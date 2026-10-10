@@ -14,6 +14,7 @@ import json
 import random
 import re
 import uuid
+import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,9 +24,9 @@ import streamlit as st
 from faker import Faker
 
 try:
-    from clinical_notes import generate_note as _gen_note
+    from clinical_notes import generate_note as _note_gen
 except ImportError:  # pragma: no cover - module lives next to this script
-    _gen_note = None
+    _note_gen = None
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -262,6 +263,95 @@ def parse_ddl(text: str) -> List[TableDef]:
 
 
 # ---------------------------------------------------------------------------
+# Generator registry (in-app override support)
+# ---------------------------------------------------------------------------
+
+def _gen_first(col, fake, i): return fake.first_name()
+def _gen_last(col, fake, i): return fake.last_name()
+def _gen_full(col, fake, i): return fake.name()
+def _gen_email(col, fake, i): return safe_email(fake)
+def _gen_phone(col, fake, i): return safe_phone()
+def _gen_ssn(col, fake, i): return safe_ssn()
+def _gen_mrn(col, fake, i): return f"MRN-{2240000 + i}"
+def _gen_npi(col, fake, i): return f"9{random.randint(100000000, 999999999)}"
+def _gen_dob(col, fake, i):
+    age = random.randint(0, 90)
+    return (date.today() - timedelta(days=age * 365 + random.randint(0, 364))).isoformat()
+def _gen_gender(col, fake, i):
+    return random.choices(["Female", "Male", "Non-binary", "Unknown"],
+                          weights=[0.49, 0.49, 0.015, 0.005])[0]
+def _gen_address(col, fake, i): return fake.street_address()
+def _gen_city(col, fake, i): return fake.city()
+def _gen_state(col, fake, i): return fake.state_abbr()
+def _gen_zip(col, fake, i): return fake.zipcode()
+def _gen_recent_ts(col, fake, i):
+    return (datetime.now() - timedelta(days=random.randint(1, 730))).isoformat(timespec="minutes")
+def _gen_past_date(col, fake, i):
+    return (date.today() - timedelta(days=random.randint(1, 3650))).isoformat()
+def _gen_salary(col, fake, i): return random.randint(35000, 250000)
+def _gen_amount(col, fake, i): return round(random.uniform(10.0, 5000.0), 2)
+def _gen_icd10(col, fake, i): return random.choice(ICD10_POOL)
+def _gen_cpt(col, fake, i): return random.choice(CPT_POOL)
+def _gen_loinc(col, fake, i): return random.choice(LOINC_POOL)
+def _gen_med(col, fake, i): return random.choice(MEDICATIONS)
+def _gen_dept(col, fake, i): return random.choice(DEPARTMENTS)
+def _gen_enc_type(col, fake, i):
+    return random.choices(ENCOUNTER_TYPES, weights=[0.60, 0.10, 0.15, 0.10, 0.04, 0.01])[0]
+def _gen_note(col, fake, i):
+    if _note_gen is not None:
+        return _truncate_to_col(_note_gen(i, fake, "mix", dictation_ratio=0.0)["note_text"], col)
+    return _truncate_to_col("Patient seen and evaluated. Condition stable, continue current plan.", col)
+def _gen_dictation(col, fake, i):
+    if _note_gen is not None:
+        return _truncate_to_col(_note_gen(i, fake, "mix", dictation_ratio=1.0)["note_text"], col)
+    return _truncate_to_col("Dictation received; transcription pending review.", col)
+def _gen_uuid(col, fake, i): return str(uuid.uuid4())
+def _gen_int(col, fake, i): return random.randint(1, 10000)
+def _gen_float(col, fake, i): return round(random.uniform(0.0, 1000.0), 2)
+def _gen_word(col, fake, i): return fake.word()
+def _gen_sentence(col, fake, i): return fake.sentence()
+def _gen_null(col, fake, i): return None
+
+
+GENERATOR_REGISTRY = {
+    "First name (Faker)": _gen_first,
+    "Last name (Faker)": _gen_last,
+    "Full name (Faker)": _gen_full,
+    "Email — safe @example.com": _gen_email,
+    "Phone — safe 555-01xx": _gen_phone,
+    "SSN — safe 987-65-xxxx": _gen_ssn,
+    "MRN — MRN-224xxxx": _gen_mrn,
+    "NPI — 9xxxxxxxxx": _gen_npi,
+    "Date of birth": _gen_dob,
+    "Gender (weighted)": _gen_gender,
+    "Street address": _gen_address,
+    "City": _gen_city,
+    "State (abbr)": _gen_state,
+    "ZIP code": _gen_zip,
+    "Recent timestamp": _gen_recent_ts,
+    "Past date": _gen_past_date,
+    "Salary (35k–250k)": _gen_salary,
+    "Amount (10–5000)": _gen_amount,
+    "ICD-10 code": _gen_icd10,
+    "CPT code": _gen_cpt,
+    "LOINC code": _gen_loinc,
+    "Medication": _gen_med,
+    "Department": _gen_dept,
+    "Encounter type (weighted)": _gen_enc_type,
+    "Clinical note text": _gen_note,
+    "Dictation transcript": _gen_dictation,
+    "UUID4": _gen_uuid,
+    "Random integer": _gen_int,
+    "Random float": _gen_float,
+    "Random word": _gen_word,
+    "Sentence": _gen_sentence,
+    "Always NULL": _gen_null,
+}
+
+AUTO = "Auto (inferred)"
+
+
+# ---------------------------------------------------------------------------
 # Semantic Generator
 # ---------------------------------------------------------------------------
 
@@ -296,9 +386,14 @@ _NARRATIVE_RE = re.compile(
 _DICTATION_RE = re.compile(r"dictation|transcript")
 
 
-def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) -> Any:
+def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int,
+                    override: str = None) -> Any:
     name = col.name.lower()
     bt = col.base_type
+
+    # manual override from the UI (PK/FK stay locked to preserve integrity)
+    if override and override in GENERATOR_REGISTRY and not col.is_pk and not col.fk_table:
+        return GENERATOR_REGISTRY[override](col, fake, row_idx)
 
     if bt in ("uuid", "uniqueidentifier"):
         return str(uuid.uuid4())
@@ -326,15 +421,15 @@ def _generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int) ->
     if re.search(r"^author$|dictated.?by|signed.?by|transcriptionist", name):
         return f"Dr. {fake.first_name()} {fake.last_name()}, MD"
     if _DICTATION_RE.search(name):
-        if _gen_note is not None:
-            note = _gen_note(row_idx, fake, "mix", dictation_ratio=1.0)["note_text"]
+        if _note_gen is not None:
+            note = _note_gen(row_idx, fake, "mix", dictation_ratio=1.0)["note_text"]
             return _truncate_to_col(note, col)
         return _truncate_to_col(
             "Dictation received via telephone line. Patient reports ongoing symptoms; "
             "transcription pending review by attending provider.", col)
     if _NARRATIVE_RE.search(name):
-        if _gen_note is not None:
-            note = _gen_note(row_idx, fake, "mix", dictation_ratio=0.0)["note_text"]
+        if _note_gen is not None:
+            note = _note_gen(row_idx, fake, "mix", dictation_ratio=0.0)["note_text"]
             return _truncate_to_col(note, col)
         return _truncate_to_col(
             "Patient seen and evaluated. Condition stable, continue current plan. "
@@ -615,9 +710,12 @@ def generate_from_table(
     n: int,
     fake: Faker,
     fk_pools: Optional[Dict[str, List]] = None,
+    overrides: Optional[Dict[str, str]] = None,
 ) -> pd.DataFrame:
     if fk_pools is None:
         fk_pools = {}
+    if overrides is None:
+        overrides = {}
 
     fn_cols = [c.name for c in table.columns if re.search(r"first.?name|fname", c.name.lower())]
     ln_cols = [c.name for c in table.columns if re.search(r"last.?name|lname|surname", c.name.lower())]
@@ -651,15 +749,18 @@ def generate_from_table(
                 row[col.name] = None
                 continue
             pool = fk_pools.get(col.fk_table.lower(), []) if col.fk_table else []
-            row[col.name] = _generate_value(col, fake, pool, i)
+            row[col.name] = _generate_value(col, fake, pool, i,
+                                            override=overrides.get(col.name))
         rows.append(row)
 
     return pd.DataFrame(rows)
 
 
-def generate_all_tables(tables: List[TableDef], n: int, fake: Faker) -> Dict[str, pd.DataFrame]:
+def generate_all_tables(tables: List[TableDef], n: int, fake: Faker,
+                        overrides_all: Optional[Dict[str, Dict[str, str]]] = None) -> Dict[str, pd.DataFrame]:
     """Generate all tables in dependency order for referential integrity."""
     schema_names = {t.name.lower() for t in tables}
+    overrides_all = overrides_all or {}
     results: Dict[str, pd.DataFrame] = {}
     pk_pools: Dict[str, List] = {}
 
@@ -676,7 +777,8 @@ def generate_all_tables(tables: List[TableDef], n: int, fake: Faker) -> Dict[str
             break
         for t in list(remaining):
             if deps_met(t):
-                df = generate_from_table(t, n, fake, dict(pk_pools))
+                df = generate_from_table(t, n, fake, dict(pk_pools),
+                                         overrides=overrides_all.get(t.name, {}))
                 results[t.name] = df
                 remaining.remove(t)
                 pk_col = next((c for c in t.columns if c.is_pk), None)
@@ -850,7 +952,7 @@ def main():
 
     # Sidebar
     st.sidebar.header("Generation Settings")
-    row_count = st.sidebar.slider("Rows per table", min_value=5, max_value=500, value=50, step=5)
+    row_count = st.sidebar.slider("Rows per table", min_value=5, max_value=5000, value=50, step=5)
     seed = st.sidebar.number_input("Random Seed", min_value=0, max_value=999999, value=42)
     output_format = st.sidebar.selectbox("Output Format", ["Table Preview", "CSV", "JSON", "SQL INSERT"])
 
@@ -895,9 +997,12 @@ def main():
     # Schema preview
     if tables:
         st.subheader("2. Parsed Schema")
-        st.caption(f"Found {len(tables)} table(s). Review inferred generators — these determine what data gets generated.")
+        st.caption(f"Found {len(tables)} table(s). Review inferred generators — you can override any "
+                   "column's generator from the dropdown before generating. PK/FK columns stay locked "
+                   "to preserve referential integrity.")
         for t in tables:
             with st.expander(f"**{t.name}** — {len(t.columns)} columns", expanded=len(tables) <= 2):
+                saved = st.session_state.get(f"overrides_{t.name}", {})
                 col_data = []
                 for c in t.columns:
                     flags = []
@@ -907,13 +1012,40 @@ def main():
                         flags.append(f"FK → {c.fk_table}")
                     if not c.nullable:
                         flags.append("NOT NULL")
+                    locked = bool(c.is_pk or c.fk_table)
                     col_data.append({
                         "Column": c.name,
                         "SQL Type": c.sql_type,
                         "Flags": " | ".join(flags) if flags else "—",
                         "Inferred Generator": _describe_generator(c),
+                        "Generator": "Auto (locked)" if locked else saved.get(c.name, AUTO),
                     })
-                st.dataframe(pd.DataFrame(col_data), use_container_width=True, hide_index=True)
+                preview_df = pd.DataFrame(col_data)
+                edited = st.data_editor(
+                    preview_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    key=f"editor_{t.name}",
+                    disabled=["Column", "SQL Type", "Flags", "Inferred Generator"],
+                    column_config={
+                        "Generator": st.column_config.SelectboxColumn(
+                            "Generator (editable)",
+                            options=[AUTO] + list(GENERATOR_REGISTRY.keys()),
+                            help="Override the inferred generator for this column",
+                        ),
+                    },
+                )
+                # persist overrides (skip locked columns rendered as Auto (locked))
+                overrides = {
+                    r["Column"]: r["Generator"]
+                    for _, r in edited.iterrows()
+                    if r["Generator"] not in (AUTO, "Auto (locked)")
+                }
+                st.session_state[f"overrides_{t.name}"] = overrides
+                if overrides:
+                    st.caption(f"{len(overrides)} column(s) overridden: "
+                               + ", ".join(f"`{c}`" for c in list(overrides)[:6])
+                               + (" …" if len(overrides) > 6 else ""))
 
     # Generation controls
     if tables:
@@ -932,15 +1064,38 @@ def main():
             Faker.seed(seed)
             fake = Faker()
 
+            if gen_mode == "All tables (with referential integrity)":
+                overrides_all = {t.name: st.session_state.get(f"overrides_{t.name}", {})
+                                 for t in tables}
+            else:
+                tbl = next(t for t in tables if t.name == selected_table)
+                overrides_all = {tbl.name: st.session_state.get(f"overrides_{tbl.name}", {})}
+
             with st.spinner("Generating..."):
                 if gen_mode == "All tables (with referential integrity)":
-                    all_dfs = generate_all_tables(tables, row_count, fake)
+                    all_dfs = generate_all_tables(tables, row_count, fake, overrides_all)
                 else:
-                    tbl = next(t for t in tables if t.name == selected_table)
-                    all_dfs = {tbl.name: generate_from_table(tbl, row_count, fake)}
+                    all_dfs = {tbl.name: generate_from_table(tbl, row_count, fake,
+                                                             overrides=overrides_all.get(tbl.name, {}))}
 
             total_rows = sum(len(df) for df in all_dfs.values())
             st.success(f"Generated {total_rows} row(s) across {len(all_dfs)} table(s) (seed={seed})")
+
+            if len(all_dfs) > 1:
+                manifest = {
+                    "_meta": {"generated_by": "synth-data-gen schema_app", "synthetic": True,
+                              "seed": seed, "rows_per_table": row_count,
+                              "timestamp": datetime.now().isoformat(timespec="seconds")},
+                    "tables": {k: len(v) for k, v in all_dfs.items()},
+                }
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for tbl_name, df in all_dfs.items():
+                        zf.writestr(f"synthetic_{tbl_name}.csv", to_csv_string(df))
+                    zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+                st.download_button("📦 Download all tables (zip, CSV + manifest)",
+                                   buf.getvalue(), file_name="synthetic_schema_bundle.zip",
+                                   mime="application/zip")
 
             for tbl_name, df in all_dfs.items():
                 st.markdown(f"#### `{tbl_name}`")
