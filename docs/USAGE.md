@@ -120,6 +120,47 @@ Variants:
 linked* → pick locale + dirty mode in the sidebar → per-table previews,
 integrity badge, zip + FHIR downloads.
 
+## Recipe 5 — Use it as a Claude Code skill
+
+*You want synthetic-data generation on demand inside Claude Code (or any
+assistant that loads `.claude/skills/`).*
+
+**Install once** (self-contained — the `synthgen` package ships inside):
+
+```bash
+./run.sh install-skill                                      # user-level, all projects
+./run.sh install-skill ~/myproject/.claude/skills/synth-data-gen   # project-level
+```
+
+Requires `pip install faker pandas` in the environment Claude Code uses.
+
+**Then call it two ways:**
+
+1. **Natural language** — the skill auto-triggers in Claude Code on requests like:
+   > *"I need test data for the patient table"*
+   > *"Populate our test database from the schema/ directory"*
+   > *"Generate 200 doctor's notes as raw dictation with PHI annotations"*
+   > *"Score our de-id service against annotated synthetic notes"*
+
+2. **Direct CLI from the installed skill** (no repo checkout needed):
+
+```bash
+SKILL=~/.claude/skills/synth-data-gen/scripts
+python $SKILL/generate_from_schema.py schema/ --rows 100 --validate
+python $SKILL/clinical_bundle.py -n 100 --zip --validate
+python -m synthgen deid --baseline notes.csv        # from the scripts/ dir
+```
+
+The skill auto-detects a `schema/` directory (`schema/`, `db/schema/`,
+`migrations/`, `ddl/`, `sql/`) and generates with FK integrity + validation
+before delivery, always stating the data is synthetic.
+
+**Developing the skill itself:** edit the canonical `synthgen/` package in this
+repo → `make sync-skill` (regenerates skill scripts + root SKILL.md mirror) →
+`make test` → `./run.sh install-skill` (fresh reinstall). CI fails on drift.
+See [INSTALL.md](../INSTALL.md) and the skill's
+[SKILL.md](../synth-data-gen/SKILL.md) for full details.
+
 ---
 
 ## The Streamlit apps

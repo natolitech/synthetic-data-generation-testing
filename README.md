@@ -415,12 +415,28 @@ The `synth-data-gen/` directory is a self-contained Claude Code skill. Install i
 ### Install
 
 ```bash
-# Project-level (recommended — skill travels with the repo)
-cp -r synth-data-gen/ /path/to/your/project/.claude/skills/synth-data-gen/
+# Preferred (from this repo) — user-level or project-level
+./run.sh install-skill
+./run.sh install-skill /path/to/your/project/.claude/skills/synth-data-gen
 
-# User-level (available in all projects)
-cp -r synth-data-gen/ ~/.claude/skills/synth-data-gen/
+# Or manually
+cp -r synth-data-gen/ /path/to/your/project/.claude/skills/synth-data-gen/   # project-level
+cp -r synth-data-gen/ ~/.claude/skills/synth-data-gen/                       # user-level
 ```
+
+The skill is fully self-contained (the `synthgen` package ships inside), so
+installed CLIs work with no repo checkout:
+
+```bash
+SKILL=~/.claude/skills/synth-data-gen/scripts
+python $SKILL/generate_from_schema.py schema/ --rows 100 --validate
+python $SKILL/clinical_bundle.py -n 100 --zip --validate
+```
+
+Developing the skill itself: edit `synthgen/` → `make sync-skill` → `make test`
+→ `./run.sh install-skill`. The root `SKILL.md` is a generated mirror of
+`synth-data-gen/SKILL.md` — CI drift-gates both. Full install-and-invoke guide:
+[docs/USAGE.md](docs/USAGE.md#recipe-5--use-it-as-a-claude-code-skill).
 
 ### How it works
 
