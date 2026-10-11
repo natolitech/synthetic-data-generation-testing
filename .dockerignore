@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.git/
+.github/
+.DS_Store
+synthetic_output/
+tests/
+*.zip
+.pytest_cache/
+.ruff_cache/

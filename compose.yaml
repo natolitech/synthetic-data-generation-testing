@@ -1,0 +1,13 @@
+# Run both Streamlit apps:  docker compose up
+services:
+  demo:
+    build: .
+    command: python -m streamlit run demo_app.py --server.port 8501 --server.address 0.0.0.0
+    ports: ["8501:8501"]
+    volumes: ["./synthetic_output:/app/synthetic_output"]
+
+  schema:
+    build: .
+    command: python -m streamlit run schema_app.py --server.port 8502 --server.address 0.0.0.0
+    ports: ["8502:8502"]
+    volumes: ["./synthetic_output:/app/synthetic_output"]

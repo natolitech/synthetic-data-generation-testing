@@ -15,6 +15,8 @@ generated message is well-formed.
 
 from datetime import datetime
 
+from .clock import clock
+
 _SENDING_APP = "SYNTHSYS"
 _SENDING_FAC = "SYNFAC"
 _RECV_APP = "RECVSYS"
@@ -75,7 +77,7 @@ def _ts_date(dt: str) -> str:
 
 def _msh(msg_type: str, control_id: str) -> str:
     return (f"MSH|^~\\&|{_SENDING_APP}|{_SENDING_FAC}|{_RECV_APP}|{_RECV_FAC}|"
-            f"{datetime.now().strftime('%Y%m%d%H%M%S')}||{msg_type}|{control_id}|P|2.5.1")
+            f"{clock.now().strftime('%Y%m%d%H%M%S')}||{msg_type}|{control_id}|P|2.5.1")
 
 
 def _pid(patient: dict) -> str:

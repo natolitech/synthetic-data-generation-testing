@@ -1,9 +1,12 @@
 # Improvement Plan — Synthetic Data Generation Toolkit
 
-Status: **Phase 1 + 2 + 3 delivered.** Phase 3 shipped: correlated medications table +
-condition-biased labs, DOB↔age reconciliation, four new narrative PHI types
-(radiology, behavioral health w/ 42 CFR Part 2, portal messages, call transcripts),
-locale packs (us/uk/ca/eu), and dirty-data mode. Remaining polish and Phases 4–5 below.
+Status: **Phases 1–4 delivered.** Phase 4 shipped: shared `synthgen/` package
+(canonical implementation; apps and skill are consumers), generated skill copies
+with a drift gate (`make sync-skill` / `check-sync`), 76-test pytest suite
+including the validator-never-flags-generators invariant and frozen-clock
+determinism, GitHub Actions CI (lint + tests + drift + CLI smoke on 3.11–3.14),
+`pyproject.toml` with a `synthgen` console script, and Docker/compose for the
+Streamlit apps. Remaining: Phase 5 (validator depth, de-id scoring harness).
 Everything is a living roadmap; items are ordered by value-to-effort.
 
 ---
@@ -41,14 +44,16 @@ Everything is a living roadmap; items are ordered by value-to-effort.
 
 **Phase 3 leftovers (small):** locale support for the standalone notes CLI and schema-driven tools (US-centric by design for now); more locales (AU, JP); dirty-mode dial (`--dirty-severity`).
 
-## Phase 4 — Architecture & quality
+## Phase 4 — Architecture & quality ✅ delivered (Oct 2026)
 
-12. **Extract a shared package** (`synthgen/`): schema parser, semantic mapper, validator, and domain pools currently live in 2–3 parallel copies (root + skill). Keep the skill self-contained but *generate* its copies from the package via a `make sync-skill` build step instead of hand-editing both.
-13. **Tests.** Pytest golden-file tests (seeded outputs must be byte-stable), schema-parser unit tests, validator round-trips (generate → validate must always pass). Target the invariant: *validator never flags generator output*.
-14. **CI (GitHub Actions).** Lint (ruff), run tests, generate fixtures and validate them on every push. Prevents "works on my machine" drift between the app and skill copies.
-15. **Typed, documented API.** Docstrings + type hints throughout; the generators become importable building blocks, not just scripts.
-16. **Packaging.** `pyproject.toml` + console script (`synthgen generate|validate|notes`) published to PyPI; skill install becomes `pip install synthgen[skill]`-friendly.
-17. **Docker.** `Dockerfile` + compose for the Streamlit apps — zero-Python demos and CI-friendly screenshots.
+12. **Shared package.** ✅ `synthgen/` is the canonical implementation (schema parser, semantic generators + registry, table generation, formatters, validators, notes, bundle, FHIR, HL7, manifests, injectable clock). `schema_app.py` slimmed ~990→296 lines; root scripts became compat shims. Skill scripts are **generated** (`make sync-skill`): shims + a package copy, so the skill stays self-contained with zero hand-synced duplicates. `make check-sync` gates drift in CI. The lint pass also caught latent `uuid`/`json` import crashes in the old copies — the exact class of bug the extraction eliminates.
+13. **Tests.** ✅ 76 pytest tests: parser dialects/constraints, semantic mapping + overrides + truncation, note span-offset exactness, bundle integrity across seeds, med↔dx correlation, lab bias, locale packs, dirty mode, FHIR reference resolution, HL7 well-formedness, frozen-clock determinism (notes + full cohort), and the headline invariant suite — **the validator never flags generator output** across every generator/format/locale.
+14. **CI.** ✅ GitHub Actions on 3.11/3.13/3.14: ruff → pytest → skill drift gate → CLI smoke (bundle in all formats incl. dirty+zip, notes, schema via both root package and standalone skill copy) → standalone validator on outputs.
+15. **Typed, documented API.** ✅ Public API exported from `synthgen/__init__` with docstrings; `clock.py` makes generation testable; CLI mains accept `argv` for programmatic use.
+16. **Packaging.** ✅ `pyproject.toml` (setuptools, `synthgen` console script, `[app]`/`[dev]` extras), `python -m synthgen notes|bundle|schema|validate` unified CLI. PyPI publish left as a release decision (license TBD).
+17. **Docker.** ✅ `Dockerfile` (python:3.12-slim, demo app) + `compose.yaml` (both apps, shared output volume) + `.dockerignore`.
+
+**Phase 4 leftovers:** publish to PyPI once licensed; type-checking (mypy) on the package; coverage gate.
 
 ## Phase 5 — Validator depth
 

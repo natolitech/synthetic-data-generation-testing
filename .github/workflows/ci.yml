@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install faker pandas streamlit pytest ruff
+
+      - name: Lint (ruff)
+        run: python -m ruff check synthgen/ tests/ scripts/ demo_app.py schema_app.py clinical_notes.py clinical_bundle.py fhir_export.py hl7_export.py validate_synthetic.py example_patient_generator.py
+
+      - name: Unit tests (pytest)
+        run: python -m pytest tests/ -q
+
+      - name: Skill copy drift check
+        run: python scripts/sync_skill.py --check
+
+      - name: Smoke — bundle CLI (all formats, dirty + zip)
+        run: |
+          python -m synthgen bundle -n 25 --validate --dirty --zip -o /tmp/bundle/
+          python -m synthgen bundle -n 15 --format fhir -o /tmp/bundle/
+          python -m synthgen bundle -n 15 --format hl7 --validate -o /tmp/bundle/
+
+      - name: Smoke — notes CLI
+        run: python -m synthgen notes -n 10 --validate --ground-truth -o /tmp/notes/
+
+      - name: Smoke — schema CLI (root + standalone skill copy)
+        run: |
+          python -m synthgen schema schema/ --rows 15 --validate --manifest -o /tmp/schema/
+          python synth-data-gen/scripts/generate_from_schema.py schema/ --rows 15 --validate -o /tmp/schema-skill/
+
+      - name: Smoke — standalone validator on generated output
+        run: python validate_synthetic.py /tmp/bundle/ /tmp/notes/ /tmp/schema/

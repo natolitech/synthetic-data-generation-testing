@@ -5,118 +5,93 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (runtime) + dev tools
 pip install -r requirements.txt
+pip install -e ".[dev]"          # pytest + ruff, plus the `synthgen` console script
 
 # Preferred: use the run.sh entry point for everything
 ./run.sh demo                          # domain-based Streamlit app (:8501)
 ./run.sh schema                        # schema-driven Streamlit app (:8502)
 ./run.sh notes -n 50 --validate        # clinical notes / dictations CLI
-./run.sh bundle -n 100 --zip --validate  # linked clinical dataset (5 tables, FHIR/HL7 capable)
-./run.sh gen schema/ --rows 100 --validate
+./run.sh bundle -n 100 --zip --validate  # linked clinical dataset (6 tables)
+./run.sh gen schema/ --rows 100 --manifest
 ./run.sh validate synthetic_output/
 ./run.sh doctor                        # environment check
 
-# Run the domain-based demo app (6 built-in domains)
-streamlit run demo_app.py
+# Unified package CLI (same subcommands)
+python -m synthgen notes -n 50 --validate
+python -m synthgen bundle -n 100 --format fhir
+python -m synthgen schema schema/ --rows 100 --manifest
 
-# Run the schema-driven app (paste/upload your own DDL)
-streamlit run schema_app.py
-
-# Schema-driven CLI — list tables detected in schema/
+# Legacy entry points still work (thin shims over synthgen)
+python clinical_notes.py -n 50 --validate --ground-truth
+python clinical_bundle.py -n 100 --zip
 python synth-data-gen/scripts/generate_from_schema.py schema/ --list-tables
 
-# Schema-driven CLI — generate all tables, CSV output
-python synth-data-gen/scripts/generate_from_schema.py schema/ --rows 100 --validate
+# Development
+make test        # pytest (76 tests: parser, generators, notes, bundle, interop, invariants)
+make lint        # ruff over package + apps + tests
+make sync-skill  # regenerate synth-data-gen/scripts from canonical sources
+make check-sync  # drift gate used by CI
+make ci          # lint + test + check-sync
 
-# Schema-driven CLI — SQL INSERT format for database seeding
-python synth-data-gen/scripts/generate_from_schema.py schema/ --format sql --output ./seed_data/
-
-# Clinical notes / dictation transcripts (6 note types, PHI ground-truth spans)
-python clinical_notes.py -n 50 --validate --ground-truth
-python clinical_notes.py -n 25 -t dictation_transcript -f txt
-
-# Linked clinical dataset: patients → encounters → diagnoses/meds/labs/notes
-python clinical_bundle.py -n 100 --validate --zip        # CSV + manifest
-python clinical_bundle.py -n 250 --format fhir            # FHIR R4 bundles
-python clinical_bundle.py -n 50 --format hl7              # HL7 v2.5.1 ADT/ORU
-python clinical_bundle.py -n 80 --locale uk               # locale pack
-python clinical_bundle.py -n 60 --dirty                   # dirty data mode
-
-# Generate patient data (standalone CLI)
-python example_patient_generator.py -n 100 -f csv
-python example_patient_generator.py -n 500 -f json --validate
-
-# Validate any generated file or directory
-python validate_synthetic.py <file_or_directory>
-# Exit codes: 0=pass, 1=warnings, 2=critical issues
+# Docker (zero local Python)
+docker compose up   # demo on :8501, schema app on :8502
 ```
 
 ## Architecture
 
-The project has three layers:
+**Canonical implementation: the `synthgen/` package.** Everything else is either a UI, a shim, or a *generated* copy.
 
-**1. Standalone tools** (root directory)
+| Module | Contents |
+|--------|----------|
+| `synthgen/schema.py` | DDL parser: `ColumnDef`, `TableDef`, `parse_ddl`, `load_schema` (PostgreSQL/MySQL/SQLite/SQL Server) |
+| `synthgen/generators.py` | Semantic column mapping (`generate_value`), safe-range constants + helpers, `GENERATOR_REGISTRY` (~30 named generators for UI/CLI overrides), `null_rate`, `reconcile_age`, `describe_generator` |
+| `synthgen/tables.py` | `generate_table` (single table, with overrides) and `generate_all` (FK dependency order), edge-case name injection |
+| `synthgen/formatters.py` | CSV / JSON (with `_meta.synthetic` marker) / SQL INSERT serializers |
+| `synthgen/validators.py` | Inline PII/PHI `validate()` — SSN/email/phone ranges; reserved-TLD + subdomain-aware safe-email logic |
+| `synthgen/notes.py` | 10 clinical note types (progress, H&P, discharge, ED, telehealth, procedure, radiology, behavioral-health w/ 42 CFR Part 2, portal message, call transcript), transcribed or raw-dictation rendering, **ground-truth PHI spans**; `make_context()`/`build_note()` composition API |
+| `synthgen/bundle.py` | Referentially-linked cohort (patients→encounters→diagnoses→medications→labs→notes), `check_integrity()`, condition-biased labs, locale packs (us/uk/ca/eu), `apply_dirty_mode()`, CLI |
+| `synthgen/fhir.py` | FHIR R4 serializers (Patient/Practitioner/Encounter/Condition/MedicationRequest/Observation/DocumentReference); combined bundle has zero dangling references |
+| `synthgen/hl7.py` | HL7 v2.5.1 ADT^A01 + ORU^R01 builders, delimiter-escaped |
+| `synthgen/schema_cli.py` | `python -m synthgen schema` CLI |
+| `synthgen/manifest.py` | Reproducibility manifests (seed, schema SHA-256, versions) |
+| `synthgen/clock.py` | Injectable `clock.now()/today()` — tests freeze it for byte-determinism |
 
-- `demo_app.py` — Streamlit app with six hardcoded domain generators (Clinical, Student, HR, IAM, Research, Financial). All generation logic lives here as plain functions. Supports CSV, JSON, SQL INSERT, and Parquet output. Has four output tabs: Preview, Raw Output, Validation, Statistics. The Clinical domain includes notes/dictations via `clinical_notes.py` (tables with a `note_text` column get per-note expanders) and **Full Dataset — linked** mode (renders via `_render_bundle()`: linked cohort, integrity badge, zip + FHIR downloads). Row cap 5000.
-- `schema_app.py` — Streamlit app that accepts any SQL DDL (paste or upload). Parses `CREATE TABLE` statements, maps column names to semantic generators, shows an **editable generator grid** (`st.data_editor` + `GENERATOR_REGISTRY`, ~30 generators; PK/FK locked) before generation, and supports single-table or all-tables-with-FK-integrity mode (multi-table runs get a zip download with manifest). Same four output tabs. `_generate_value(col, fake, fk_pool, row_idx, override=None)` applies manual overrides.
-- `clinical_notes.py` — CLI + importable module generating synthetic physician notes in **10 types** (progress, H&P, discharge summary, ED, telehealth, procedure, radiology, behavioral health w/ 42 CFR Part 2 banners, patient portal messages, phone call transcripts) rendered as transcribed notes or raw dictation transcripts (spoken punctuation, disfluencies, `[inaudible]`, Spanish interpreter quotes). Embeds safe-range PHI and records **ground-truth PHI spans** (type + char offsets) for de-identification scoring. `NoteBuilder` assembles segments; `make_context(fake, i, **overrides)` + `build_note(ctx, note_type, dictation)` are the composition API used by `clinical_bundle.py`; `NON_DICTATABLE` types are never rendered as dictation; `BH_CONDITIONS` gates behavioral-health notes.
-- `clinical_bundle.py` — Referentially-linked cohort generator + CLI. One shared patient/provider pool feeds encounters → diagnoses → **medications** → labs → notes. Correlations: meds from the encounter's actual dx (start ≥ dx onset), condition-biased labs, note identity/dx/timeline match their encounter, radiology findings match indication, BH notes gated to BH/SUD encounters. `check_integrity()` verifies every guarantee per run. **Locale packs** (`LOCALES`, `--locale us|uk|ca|eu`) and **dirty data mode** (`apply_dirty_mode`, `--dirty`, applied strictly after integrity verification). Outputs CSV/JSON/SQL/FHIR/HL7 + `manifest.json` + optional zip.
-- `fhir_export.py` — FHIR R4 serializers (Patient, Practitioner, Encounter, Condition, MedicationRequest, Observation, DocumentReference with base64 note payloads) per `format-templates.md` conventions (urn:example: systems, relative references). `cohort_to_bundles()` yields a combined Bundle whose internal references all resolve, plus per-resource-type bundles.
-- `hl7_export.py` — HL7 v2.5.1 builders: ADT^A01 (MSH/EVN/PID/PV1/IN1) and ORU^R01 (MSH/PID/OBR/OBX…). Content is delimiter-escaped so messages are always well-formed; `cohort_to_hl7_messages()` yields ADT + ORU files.
-- `example_patient_generator.py` — Minimal CLI generator for the clinical patient domain. Reference implementation showing the expected script structure.
-- `validate_synthetic.py` — Multi-format PII/PHI validator. Checks SSN ranges, email domains, phone prefixes, IP ranges, NPI patterns, NULL distribution, and JSON synthetic markers.
-- `run.sh` — Entry point for all tools (`demo`, `schema`, `notes`, `gen`, `patient`, `validate`, `install-skill`, `doctor`, `update`). Auto-detects a Python with faker/pandas/streamlit (`PYTHON=` overrides).
+**UIs (root):**
+- `demo_app.py` — six built-in domains + "Full Dataset — linked" mode (integrity badge, zip + FHIR downloads, locale/dirty toggles). Domain generators live inline; helpers/validators/formatters come from `synthgen`.
+- `schema_app.py` — Streamlit layer ONLY (~300 lines): editable generator grid (`GENERATOR_REGISTRY`, PK/FK locked), multi-table zip download. All generation logic imported from `synthgen`.
 
-**2. Claude Code skill** (`synth-data-gen/`)
+**Compat shims (root):** `clinical_notes.py`, `clinical_bundle.py`, `fhir_export.py`, `hl7_export.py` re-export the package so historical entry points keep working. `validate_synthetic.py` and `example_patient_generator.py` remain intentionally standalone.
 
-- `SKILL.md` — Primary behavioral instructions for Claude. Describes the schema-file workflow (auto-detect `schema/` directory) and the manual domain-based workflow. Claude reads this when the skill is invoked.
-- `references/data-domains.md` — Field-level generation rules for all 6 built-in domains. Claude reads this during generation to get realistic value pools and NULL rates.
-- `references/format-templates.md` — Output format specs for FHIR R4, HL7 v2.x, SQL, CSV, JSON, and Parquet. Claude reads this when FHIR or HL7 output is requested.
-- `scripts/generate_from_schema.py` — Standalone CLI script. Reads one or more DDL files, parses all `CREATE TABLE` statements, generates data in FK dependency order (parents before children), and writes one output file per table. Accepts `--rows`, `--seed`, `--format` (csv/json/sql), `--output`, `--tables`, `--validate`, `--list-tables`.
-- `scripts/clinical_notes.py` — Copy of the root notes/dictation generator (keep in sync with the root copy).
-- `scripts/clinical_bundle.py` — Copy of the root linked-bundle generator (+ `fhir_export.py`, `hl7_export.py` siblings; keep in sync).
-- `scripts/validate_synthetic.py` — Copy of the root-level validator for in-skill use.
-- `scripts/example_patient_generator.py` — Copy of the root-level patient generator.
+**Skill (`synth-data-gen/`) is GENERATED — never edit by hand.** `scripts/sync_skill.py` copies the package into `synth-data-gen/scripts/synthgen/`, writes CLI shims, and copies the standalone validators verbatim (plus removing stale files). CI runs `make check-sync`; any edit under `synth-data-gen/scripts/` made directly will fail the drift gate. `SKILL.md` and `references/` are hand-maintained.
 
-**3. Reference schemas** (`schema/`)
-
-- `schema/example.sql` — Sample DDL with `patients` and `encounters` tables (FK relationship) used for testing and as a starting point.
+**Tests (`tests/`)** — key invariant suite: `test_validator_invariant.py` proves *the validator never flags generator output* across every generator, format, locale, and dirty mode. Determinism tests freeze `synthgen.clock` and require identical output for identical seeds. `check_integrity` is exercised across multiple seeds.
 
 ## Semantic Column Mapping
 
-Both `schema_app.py` and `generate_from_schema.py` map column names to generators using `re.search` substring patterns. The priority order matters — first match wins. Key patterns:
+`synthgen.generators.generate_value(col, fake, fk_pool, row_idx, override=None)` maps column names via `re.search`, first match wins. Priority: manual override → UUID → PK (sequential/prefixed: SYN/EMP/USR/CLM/ENC/NOTE) → FK pool → note metadata & narrative (`note_type`, `transcription_status`, `author`, `dictation|transcript` → raw dictation, `note_text|progress_note|hpi|chief_complaint|narrative` → transcribed note) → names/contact/identity/location/demographics/dates/financial/clinical/IAM pools → SQL type fallbacks. Narrative text is truncated to `VARCHAR(n)`.
 
-- Name fields: `first_name/fname` → `fake.first_name()`, `last_name/lname/surname` → `fake.last_name()`
-- Contact: `email` → `@example.com`, `phone/mobile/telephone` → `555-01xx`, `fax` → `555-01xx` (~38% NULL)
-- Identity: `ssn/social_security` → `987-65-xxxx`, `mrn/medical_record` → `MRN-224xxxx`, any column containing `npi` → `9xxxxxxxxx`
-- Location: `city` → `fake.city()`, `state` → `fake.state_abbr()`, `zip/postal_code` → `fake.zipcode()`
-- Dates: `created_at` → recent datetime, `hire_date/start_date` → random past date, `end_date/termination_date` → ~60% NULL
-- Clinical: `encounter_type` → weighted clinical values, `icd10/dx_code` → ICD-10 pool, `cpt_code` → CPT pool
-- Clinical notes: `note_type` → note-type pool, `transcription_status` → status pool, `author/dictated_by/signed_by` → "Dr. First Last, MD", `dictation/transcript` → raw dictation transcript, `note_text/progress_note/discharge_summary/hpi/chief_complaint/narrative` → full transcribed note (truncated to `VARCHAR(n)` length; TEXT columns keep full note)
-- Financial: `salary/wage` → randint(35000, 250000), `amount/charge/price` → uniform(10, 5000)
-- Type fallback: `INT` → randint, `DECIMAL` → uniform, `DATE` → random date, `TIMESTAMP` → recent datetime, `VARCHAR` → `fake.word()`
-
-When adding new semantic rules, add them to **both** `schema_app.py` and `synth-data-gen/scripts/generate_from_schema.py` — they contain parallel copies of `_generate_value()`.
+When adding semantic rules: edit `synthgen/generators.py` ONCE, then `make sync-skill`.
 
 ## Safety Invariants
 
-Every generated identifier must stay in reserved/fictional ranges:
+Every generated identifier stays in reserved/fictional ranges:
 
 | Field | Safe Range |
 |-------|-----------|
 | SSN | `987-65-xxxx` |
-| Email | `@example.com`, `@example.org`, `@test.invalid` |
-| Phone | `555-01xx` |
+| Email | `@example.com`, `@example.org`, `@test.invalid` + reserved TLDs/subdomains |
+| Phone | `555-01xx` (US/CA), UK Ofcom `01632 960xxx`, EU synthetic `+49 30 5550-xxx` |
 | IP | `192.0.2.x`, `198.51.100.x`, `203.0.113.x` (RFC 5737) |
+| Non-US national IDs | NULL (no universally safe range) |
 
-Always run `validate_synthetic.py` against generated output before delivery.
+`tests/test_validator_invariant.py` enforces this on every push; never weaken it.
 
-## Adding a New Domain or Format
+## Adding a New Domain, Note Type, or Format
 
-1. Add generator functions to `demo_app.py` following the existing pattern (weighted random choices, NULL injection, edge-case name injection).
-2. Add semantic column-name rules to `_generate_value()` in both `schema_app.py` and `synth-data-gen/scripts/generate_from_schema.py`.
-3. If the generator lives in a shared module (like `clinical_notes.py`), copy it into `synth-data-gen/scripts/` so the skill stays self-contained — and keep the copies in sync.
-4. Update `synth-data-gen/references/data-domains.md` (and the root `data-domains.md` copy) with field-level rules.
-5. For new output formats, update `synth-data-gen/references/format-templates.md`.
-6. Validate generated output with `validate_synthetic.py`.
+1. Implement in the `synthgen/` package (generators / notes / fhir / hl7 as appropriate).
+2. Add tests under `tests/` — extend the invariant suite if new output can contain identifiers.
+3. Run `make lint test sync-skill`.
+4. Update UIs only if surfacing is needed (`demo_app.py` DOMAIN_TABLES, `schema_app.py` registry).
+5. Update `synth-data-gen/references/data-domains.md` (root `data-domains.md` mirrors it) and README.

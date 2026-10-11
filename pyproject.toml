@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synthgen"
+version = "0.4.0"
+description = "Synthetic PII/PHI test-data generation: schema-driven generators, clinical notes & dictations, FHIR R4 / HL7 v2.5.1 export — every identifier in reserved/fictional ranges."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "natolitech" }]
+keywords = ["synthetic-data", "test-data", "phi", "pii", "fhir", "hl7", "de-identification"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Healthcare Industry",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "faker>=25.0.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.30.0"]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[project.scripts]
+synthgen = "synthgen.cli:main"
+
+[project.urls]
+Repository = "https://github.com/natolitech/synthetic-data-generation-testing"
+
+[tool.setuptools]
+packages = ["synthgen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+exclude = ["synth-data-gen", "__pycache__"]
+
+[tool.ruff.lint]
+# Core correctness rules; style kept intentionally light on this codebase.
+select = ["E4", "E7", "E9", "F", "W6"]
+ignore = ["E741"]  # short variable names (l, I) used in tight generator loops

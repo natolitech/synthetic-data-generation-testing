@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""
+synthgen.schema_cli — Schema-driven synthetic data generator CLI
+================================================================
+Reads SQL DDL schema files and generates realistic synthetic data
+to populate a database. All data is entirely fictional — no real
+PII or PHI is generated.
+
+Usage:
+    # Single schema file, CSV output (default)
+    python -m synthgen schema schema/my_schema.sql
+
+    # Entire schema directory
+    python -m synthgen schema schema/ --rows 200 --output ./synthetic/
+
+    # JSON output with validation
+    python -m synthgen schema schema/ --format json --validate
+
+    # Specific tables only, seeded for reproducibility
+    python -m synthgen schema schema/all.sql --tables patients encounters --seed 42
+
+    # SQL INSERT output for seeding a database
+    python -m synthgen schema schema/ --format sql --output ./seed_data/
+
+Exit codes:
+    0  — success
+    1  — validation warnings (data generated but review recommended)
+    2  — validation critical issues (do not use generated data)
+    3  — schema parse error or no tables found
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+import random
+from faker import Faker
+
+from .formatters import to_csv, to_json, to_sql
+from .manifest import build_manifest, schema_hash, write_manifest
+from .schema import load_schema
+from .tables import generate_all
+from .validators import validate
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate synthetic data from a SQL DDL schema file or directory.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("schema", help="Schema file (.sql/.ddl) or directory of schema files")
+    parser.add_argument("-n", "--rows", type=int, default=100, help="Rows per table (default: 100)")
+    parser.add_argument("-s", "--seed", type=int, default=42, help="Random seed (default: 42)")
+    parser.add_argument("-f", "--format", choices=["csv", "json", "sql"], default="csv",
+                        help="Output format (default: csv)")
+    parser.add_argument("-o", "--output", default="./synthetic_output",
+                        help="Output directory (default: ./synthetic_output)")
+    parser.add_argument("-t", "--tables", nargs="+", metavar="TABLE",
+                        help="Only generate these tables (default: all)")
+    parser.add_argument("--validate", action="store_true",
+                        help="Run PII/PHI validation after generation")
+    parser.add_argument("--manifest", action="store_true",
+                        help="Write manifest.json (seed, schema hash, versions, row counts)")
+    parser.add_argument("--list-tables", action="store_true",
+                        help="Print detected table names and exit")
+    args = parser.parse_args(argv)
+
+    schema_path = Path(args.schema)
+    if not schema_path.exists():
+        print(f"ERROR: Schema path not found: {schema_path}", file=sys.stderr)
+        return 3
+
+    print(f"Loading schema from: {schema_path}")
+    tables = load_schema(schema_path)
+
+    if not tables:
+        print("ERROR: No CREATE TABLE statements found. Check your DDL syntax.", file=sys.stderr)
+        return 3
+
+    if args.list_tables:
+        print(f"\nFound {len(tables)} table(s):")
+        for t in tables:
+            src = f"  [{t.source_file}]" if getattr(t, "source_file", "") else ""
+            pk = next((c.name for c in t.columns if c.is_pk), "none")
+            fks = [f"{c.name}→{c.fk_table}" for c in t.columns if c.fk_table]
+            print(f"  {t.name}{src}  (pk: {pk}{', fk: ' + ', '.join(fks) if fks else ''})")
+        return 0
+
+    # Filter to requested tables
+    if args.tables:
+        requested = {t.lower() for t in args.tables}
+        tables = [t for t in tables if t.name.lower() in requested]
+        if not tables:
+            print("ERROR: None of the requested tables found. "
+                  "Use --list-tables to see available tables.", file=sys.stderr)
+            return 3
+
+    print(f"Generating {args.rows} rows per table for {len(tables)} table(s) "
+          f"(seed={args.seed}, format={args.format})")
+
+    random.seed(args.seed)
+    Faker.seed(args.seed)
+    fake = Faker()
+
+    results = generate_all(tables, args.rows, fake)
+
+    # Write output
+    out_dir = Path(args.output)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ext_map = {"csv": ".csv", "json": ".json", "sql": ".sql"}
+    ext = ext_map[args.format]
+
+    exit_code = 0
+    for table_name, df in results.items():
+        out_file = out_dir / f"synthetic_{table_name}{ext}"
+
+        if args.format == "csv":
+            content = to_csv(df)
+        elif args.format == "json":
+            content = to_json(df)
+        else:
+            content = to_sql(df, table_name)
+
+        out_file.write_text(content, encoding="utf-8")
+        print(f"  Wrote {len(df)} rows → {out_file}")
+
+        if args.validate:
+            vr = validate(content)
+            for msg in vr["critical"]:
+                print(f"    CRITICAL: {msg}", file=sys.stderr)
+                exit_code = max(exit_code, 2)
+            for msg in vr["warnings"]:
+                print(f"    WARNING:  {msg}", file=sys.stderr)
+                exit_code = max(exit_code, 1)
+            for msg in vr["info"]:
+                print(f"    INFO:     {msg}")
+            if not vr["critical"] and not vr["warnings"]:
+                print("    Validation passed — no real PII/PHI detected.")
+
+    print(f"\nDone. Output in: {out_dir.resolve()}")
+
+    if args.manifest:
+        manifest = build_manifest(
+            "synth-gen generate_from_schema", args.seed, results,
+            rows_per_table=args.rows, format=args.format,
+            schema_sha256=schema_hash(schema_path))
+        write_manifest(out_dir / "manifest.json", manifest)
+        print(f"Wrote manifest → {out_dir / 'manifest.json'}")
+
+    if exit_code == 2:
+        print("WARNING: Critical validation issues found. DO NOT use this data.", file=sys.stderr)
+    elif exit_code == 1:
+        print("NOTE: Validation warnings found. Review before using.", file=sys.stderr)
+
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

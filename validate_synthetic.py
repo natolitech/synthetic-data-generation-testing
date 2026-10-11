@@ -20,7 +20,6 @@ Exit codes:
 import argparse
 import csv
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -136,7 +135,7 @@ class ValidationResult:
                 print(f"   • {msg}")
 
         if self.stats:
-            print(f"\n📊 STATISTICS:")
+            print("\n📊 STATISTICS:")
             for key, val in self.stats.items():
                 print(f"   {key}: {val}")
 

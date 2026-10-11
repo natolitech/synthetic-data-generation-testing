@@ -282,8 +282,6 @@ def _provider_pool(cohort: dict) -> dict:
     enc = cohort["encounters"]
     notes = cohort["clinical_notes"]
     prov_by_enc = dict(zip(enc["encounter_id"], enc["attending_provider_id"]))
-    npi_by_note = dict(zip(notes["note_id"], notes["author_npi"])) if len(notes) else {}
-    display_by_note = dict(zip(notes["note_id"], notes["author"])) if len(notes) else {}
     # encounter provider ids -> npi via notes is imperfect; npi filled when known
     for _, e in enc.iterrows():
         pid = e["attending_provider_id"]

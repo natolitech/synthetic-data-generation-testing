@@ -54,13 +54,29 @@ pip install -r requirements.txt
 ./run.sh demo      # domain-based Streamlit app  → http://localhost:8501
 ./run.sh schema    # schema-driven Streamlit app → http://localhost:8502
 ./run.sh notes -n 50 --validate --ground-truth   # clinical notes / dictations
-./run.sh bundle -n 100 --zip --validate          # linked clinical dataset (5 tables)
+./run.sh bundle -n 100 --zip --validate          # linked clinical dataset (6 tables)
 ./run.sh gen schema/ --rows 200 --validate       # schema-driven CLI
 ./run.sh validate synthetic_output/              # PII/PHI validation
 ./run.sh doctor     # environment check
 ```
 
 `run.sh` auto-detects a Python interpreter with the required dependencies (override with `PYTHON=`), always runs from the repo root, and passes extra flags straight through to the underlying tool.
+
+### Option 0b — Unified package CLI
+
+```bash
+python -m synthgen notes  -n 50 --validate
+python -m synthgen bundle -n 100 --format fhir --zip
+python -m synthgen schema schema/ --rows 100 --manifest
+```
+
+With `pip install -e ".[dev]"` you also get the `synthgen` console script and dev tools (pytest, ruff).
+
+### Option 0c — Docker (zero local Python)
+
+```bash
+docker compose up    # demo app on :8501, schema app on :8502
+```
 
 ### Option 1 — Use the domain-based demo app
 
@@ -389,37 +405,44 @@ Either way, the skill validates all output before delivering it and states clear
 synthetic-data-generation-testing/
 │
 ├── run.sh                          # Single entry point for all tools
-├── demo_app.py                     # Streamlit UI — domain-based generation (6 built-in domains + linked bundle)
-├── schema_app.py                   # Streamlit UI — schema-driven generation with editable generator overrides
-├── clinical_notes.py               # CLI — clinical notes & dictation transcripts with PHI spans
-├── clinical_bundle.py              # CLI — referentially-linked clinical dataset + manifest + zip
-├── fhir_export.py                  # FHIR R4 serializers (Patient/Encounter/Condition/Observation/DocumentReference)
-├── hl7_export.py                   # HL7 v2.5.1 message builders (ADT^A01, ORU^R01)
-├── example_patient_generator.py    # CLI — standalone patient record generator (17 fields)
-├── validate_synthetic.py           # CLI — PII/PHI validator for generated files
+├── Makefile                        # Dev tasks: test / lint / sync-skill / ci
+├── pyproject.toml                  # Package metadata, synthgen console script, ruff+pytest config
+├── Dockerfile / compose.yaml       # Zero-local-Python demos of both Streamlit apps
+│
+├── synthgen/                       # ★ CANONICAL PACKAGE — all generation logic
+│   ├── schema.py                   #   SQL DDL parser (ColumnDef/TableDef/parse_ddl)
+│   ├── generators.py               #   Semantic column mapping + GENERATOR_REGISTRY + safe ranges
+│   ├── tables.py                   #   Single-table + FK-ordered multi-table generation
+│   ├── notes.py                    #   10 note types, dictation rendering, PHI ground-truth spans
+│   ├── bundle.py                   #   Linked cohort, integrity checks, locales, dirty mode
+│   ├── fhir.py / hl7.py            #   FHIR R4 + HL7 v2.5.1 exporters
+│   ├── formatters.py / validators.py / manifest.py
+│   ├── schema_cli.py / cli.py      #   python -m synthgen schema|notes|bundle|validate
+│   └── clock.py                    #   Injectable clock (test determinism)
+│
+├── demo_app.py                     # Streamlit UI — domains + linked-bundle mode
+├── schema_app.py                   # Streamlit UI — schema-driven, editable generator overrides
+├── clinical_notes.py               # Compat shims over synthgen (historical entry points)
+├── clinical_bundle.py              # "
+├── fhir_export.py / hl7_export.py  # "
+├── validate_synthetic.py           # Standalone PII/PHI validator CLI (file/dir, report)
+├── example_patient_generator.py    # Minimal reference generator
 ├── requirements.txt                # faker, pandas, streamlit
 ├── PLAN.md                         # Improvement roadmap
 │
-├── schema/                         # Example SQL schemas for testing
-│   └── example.sql                 # patients + encounters with FK relationship
+├── tests/                          # 76 pytest tests incl. validator-never-flags invariants
+├── scripts/sync_skill.py           # Generates the skill scripts (make sync-skill)
+├── .github/workflows/ci.yml        # lint + tests + drift gate + CLI smoke (py3.11–3.14)
 │
-├── data-domains.md                 # Field-level generation rules for all 6 domains + notes
-├── format-templates.md             # Output format specs: FHIR R4, HL7 v2.x, SQL, CSV, JSON, Parquet
-├── INSTALL.md                      # Skill installation and deployment guide
+├── schema/example.sql              # Sample DDL (patients + encounters FK)
+├── data-domains.md                 # Field-level rules for all domains + notes
+├── format-templates.md             # FHIR R4 / HL7 v2.x / SQL / CSV / JSON specs
+├── INSTALL.md                      # Skill installation guide
 │
-└── synth-data-gen/                 # Self-contained Claude Code skill (copy to .claude/skills/)
-    ├── SKILL.md                    # Skill definition and behavioral instructions for Claude
-    ├── references/
-    │   ├── data-domains.md         # Domain generation rules (read by Claude during generation)
-    │   └── format-templates.md     # Format specifications (read by Claude for FHIR/HL7 output)
-    └── scripts/
-        ├── generate_from_schema.py # Schema-driven generator — reads DDL, outputs synthetic data
-        ├── clinical_notes.py       # Clinical notes & dictation generator
-        ├── clinical_bundle.py      # Linked clinical dataset generator (+ manifest, zip)
-        ├── fhir_export.py          # FHIR R4 serializers
-        ├── hl7_export.py           # HL7 v2.5.1 message builders
-        ├── validate_synthetic.py   # PII/PHI validator
-        └── example_patient_generator.py  # Example generator script
+└── synth-data-gen/                 # Claude Code skill — scripts/ are GENERATED (make sync-skill)
+    ├── SKILL.md
+    ├── references/                 # data-domains.md, format-templates.md
+    └── scripts/                    # CLI shims + synthgen/ package copy + standalone validators
 ```
 
 ---
@@ -451,6 +474,21 @@ Key properties across all domains:
 - **Referential integrity** — child tables always generated after parents; FK values drawn from parent PK pool
 
 ---
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+
+make test         # 76 tests: parser, generators, notes spans, bundle integrity,
+                  # FHIR/HL7 well-formedness, determinism, validator invariants
+make lint         # ruff (configured in pyproject.toml)
+make sync-skill   # regenerate synth-data-gen/scripts from synthgen/ — REQUIRED
+                  # after any package change (CI fails on drift via check-sync)
+```
+
+The core invariant enforced by CI: **the validator never flags generator output**
+across every generator, format, locale, and dirty-data mode.
 
 ## Contributing
 
