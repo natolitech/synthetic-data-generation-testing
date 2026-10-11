@@ -13,7 +13,9 @@ This project provides four ways to generate synthetic data:
 | `schema_app.py` | Interactive Streamlit UI — paste or upload your own SQL schema and generate matching data, with editable per-column generator overrides |
 | `generate_from_schema.py` | CLI script — point it at a `schema/` directory and it generates data for every table automatically |
 | `clinical_notes.py` | CLI — synthetic physician notes & dictation transcripts with embedded (safe-range) PHI and ground-truth PHI spans |
-| `clinical_bundle.py` | CLI — **referentially-linked** clinical dataset (patients → encounters → diagnoses/labs/notes) with FHIR R4 / HL7 v2.5.1 / CSV / JSON / SQL output, zip + manifest |
+| `clinical_bundle.py` | CLI — **referentially-linked** clinical dataset (patients → encounters → diagnoses/meds/labs/notes) with FHIR R4 / HL7 v2.5.1 / CSV / JSON / SQL output, locale packs, dirty mode, zip + manifest |
+| `synthgen deid` | CLI — score any de-identification scrubber against ground-truth PHI spans (recall / char-precision / F1 per type) |
+| `synthgen fhir-check` | CLI — structural FHIR R4 conformance checks (required elements, enums, references, base64) |
 
 All tools share the same safety guarantees and semantic column mapping. The Claude Code skill (`synth-data-gen/`) wraps these tools and invokes them automatically when you ask for test data in Claude Code. See [PLAN.md](PLAN.md) for the roadmap.
 
@@ -137,9 +139,52 @@ mid-sentence corrections, and occasional Spanish interpreter quotes.
 
 **Ground-truth PHI spans.** Every note can be annotated with the exact character
 offsets of each PHI instance (`PATIENT`, `MRN`, `DOB`, `SSN`, `PHONE`, `ADDRESS`,
-`PROVIDER`, `NPI`, `DATE`, `ENCOUNTER`, `CONTACT`, `ICD10`). Use them to score
+`PROVIDER`, `NPI`, `DATE`, `ENCOUNTER`, `CONTACT`, `ICD10`, `EMAIL`). Use them to score
 de-identification pipelines for recall/precision — see
 `clinical_notes_ground_truth.json` written by `--ground-truth`.
+
+### Scoring a de-identification scrubber (deid harness)
+
+Score **any** redaction technology — regex, NER, LLM, vendor product — against the
+ground-truth spans. The harness diffs original vs. scrubbed text and reports
+span recall, **character-level precision** (blunt whole-document redaction scores
+low), F1, and per-PHI-type breakdowns:
+
+```bash
+# generate notes, then score the built-in regex baseline
+python -m synthgen bundle -n 50 -o ./synthetic_output/
+python -m synthgen deid --baseline ./synthetic_output/synthetic_clinical_notes.csv
+
+# score YOUR scrubber (any str -> str callable) + HTML/JSON reports
+python -m synthgen deid --scrubber mypkg:redact_text notes.csv \
+    --html deid_report.html --json scores.json
+```
+
+The baseline demonstrates the classic profile: 100% recall on structured
+identifiers (MRN/SSN/NPI/DOB/phones), 0% on names — the harness makes that
+gap measurable instead of anecdotal.
+
+### FHIR conformance checking
+
+```bash
+python -m synthgen fhir-check synthetic_fhir_bundle.json --json report.json
+```
+
+Structural FHIR R4 checks with zero dependencies: required elements per resource
+type, status code enums, id/reference formats, ISO-8601 datetimes, base64
+attachment payloads, and dangling-reference detection inside bundles. If the
+optional `fhir.resources` package is installed, official-schema validation runs
+additionally.
+
+### Validation depth
+
+NPIs are **Luhn-checksum valid** (CMS 80840 algorithm) but keep the safe 9-prefix,
+so they exercise NPI validation logic without colliding with issued numbers. The
+validator flags: valid-checksum NPIs in the real-range 1-prefix (critical),
+invalid checksums (data quality), MRNs outside `MRN-224xxxx`, plus the existing
+SSN/email/phone/IP range checks. `python validate_synthetic.py <path> --html report.html`
+produces a self-contained HTML compliance artifact with per-check status and
+statistics — suitable as a review deliverable.
 
 Schema-driven tools also pick up note columns automatically: `note_text`,
 `dictation_text`, `progress_note`, `hpi`, `chief_complaint`, `note_type`,
@@ -343,7 +388,7 @@ python validate_synthetic.py <file_or_directory> [--format csv|json|sql]
 | `1` | Warnings found — review recommended |
 | `2` | Critical issues — do not use this data |
 
-Checks performed: SSN area codes, email domains, phone ranges, IP ranges, NPI format, NULL distribution, JSON `_meta.synthetic` marker.
+Checks performed: SSN area codes, email domains, phone ranges, IP ranges, **NPI Luhn checksums** (valid-checksum + real-range prefix = critical), MRN synthetic-range, NULL distribution, JSON `_meta.synthetic` marker. Add `--html report.html` for a self-contained compliance artifact.
 
 ---
 

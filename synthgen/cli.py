@@ -5,6 +5,8 @@ Subcommands:
     bundle   Linked clinical dataset (synthgen.bundle)
     schema   Schema-driven generation from SQL DDL (synthgen.schema_cli)
     validate PII/PHI validation of a file or directory (validate_synthetic.py)
+    deid     Score a de-id scrubber against ground-truth PHI spans (synthgen.deid)
+    fhir-check  Structural FHIR R4 conformance check (synthgen.fhir_validate)
 """
 
 import sys
@@ -29,6 +31,14 @@ def main(argv=None) -> int:
     if cmd == "schema":
         from .schema_cli import main as schema_main
         return schema_main(rest)
+
+    if cmd == "deid":
+        from .deid import main as deid_main
+        return deid_main(rest)
+
+    if cmd == "fhir-check":
+        from .fhir_validate import main as fhir_main
+        return fhir_main(rest)
 
     if cmd == "validate":
         import subprocess

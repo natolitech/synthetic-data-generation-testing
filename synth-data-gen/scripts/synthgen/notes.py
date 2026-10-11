@@ -170,7 +170,10 @@ def safe_email(first: str, last: str) -> str:
 
 
 def safe_npi() -> str:
-    return f"9{random.randint(100000000, 999999999)}"
+    """Checksum-valid NPI (Luhn 80840 algorithm) in the safe 9-prefix range."""
+    from .validators import npi_check_digit
+    first9 = "9" + f"{random.randint(0, 99999999):08d}"
+    return first9 + npi_check_digit(first9)
 
 
 # ---------------------------------------------------------------------------

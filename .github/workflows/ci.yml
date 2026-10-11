@@ -48,5 +48,13 @@ jobs:
           python -m synthgen schema schema/ --rows 15 --validate --manifest -o /tmp/schema/
           python synth-data-gen/scripts/generate_from_schema.py schema/ --rows 15 --validate -o /tmp/schema-skill/
 
-      - name: Smoke — standalone validator on generated output
-        run: python validate_synthetic.py /tmp/bundle/ /tmp/notes/ /tmp/schema/
+      - name: Smoke — standalone validator on generated output (incl. HTML report)
+        run: |
+          python validate_synthetic.py /tmp/bundle/ /tmp/notes/ /tmp/schema/ --html /tmp/compliance.html
+          test -s /tmp/compliance.html
+
+      - name: Smoke — de-id scoring harness + FHIR conformance checker
+        run: |
+          python -m synthgen deid --baseline /tmp/bundle/synthetic_clinical_notes.csv --html /tmp/deid.html --sample-misses 2
+          python -m synthgen fhir-check /tmp/bundle/synthetic_fhir_bundle.json
+          python -m synthgen fhir-check /tmp/bundle/synthetic_patients_fhir.json

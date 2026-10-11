@@ -192,7 +192,9 @@ def generate_value(col: ColumnDef, fake: Faker, fk_pool: List, row_idx: int,
     if re.search(r"^mrn$|medical.?record", name):
         return f"MRN-{2240000 + row_idx}"
     if re.search(r"npi", name):
-        return f"9{random.randint(100000000, 999999999)}"
+        from .validators import npi_check_digit
+        first9 = "9" + f"{random.randint(0, 99999999):08d}"
+        return first9 + npi_check_digit(first9)
 
     # Location
     if re.search(r"address.?line.?1|street.?address|^street$|^address1$|^addr1$", name):
@@ -368,7 +370,10 @@ def _gen_email(col, fake, i): return safe_email(fake)
 def _gen_phone(col, fake, i): return safe_phone()
 def _gen_ssn(col, fake, i): return safe_ssn()
 def _gen_mrn(col, fake, i): return f"MRN-{2240000 + i}"
-def _gen_npi(col, fake, i): return f"9{random.randint(100000000, 999999999)}"
+def _gen_npi(col, fake, i):
+    from .validators import npi_check_digit
+    first9 = "9" + f"{random.randint(0, 99999999):08d}"
+    return first9 + npi_check_digit(first9)
 def _gen_dob(col, fake, i):
     age = random.randint(0, 90)
     return (clock.today() - timedelta(days=age * 365 + random.randint(0, 364))).isoformat()

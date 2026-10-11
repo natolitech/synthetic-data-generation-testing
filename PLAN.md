@@ -1,13 +1,11 @@
 # Improvement Plan — Synthetic Data Generation Toolkit
 
-Status: **Phases 1–4 delivered.** Phase 4 shipped: shared `synthgen/` package
-(canonical implementation; apps and skill are consumers), generated skill copies
-with a drift gate (`make sync-skill` / `check-sync`), 76-test pytest suite
-including the validator-never-flags-generators invariant and frozen-clock
-determinism, GitHub Actions CI (lint + tests + drift + CLI smoke on 3.11–3.14),
-`pyproject.toml` with a `synthgen` console script, and Docker/compose for the
-Streamlit apps. Remaining: Phase 5 (validator depth, de-id scoring harness).
-Everything is a living roadmap; items are ordered by value-to-effort.
+Status: **Phases 1–5 delivered — roadmap complete.** Phase 5 shipped: NPI Luhn
+checksums (checksum-valid safe-prefix NPIs + real-range detection), the
+de-identification scoring harness (`synthgen deid` — recall / character-level
+precision / F1 per PHI type, built-in regex baseline), HTML compliance reports,
+and structural FHIR R4 conformance checking (`synthgen fhir-check`). Remaining
+backlog items are noted at the bottom of this file.
 
 ---
 
@@ -55,14 +53,14 @@ Everything is a living roadmap; items are ordered by value-to-effort.
 
 **Phase 4 leftovers:** publish to PyPI once licensed; type-checking (mypy) on the package; coverage gate.
 
-## Phase 5 — Validator depth
+## Phase 5 — Validator depth ✅ delivered (Oct 2026)
 
-18. **NPI checksum** (Luhn) validation instead of prefix-only checks; MRN pattern check.
-19. **De-id scoring harness.** Given notes + ground-truth spans, score any scrubber: recall, precision, F1 per PHI type. Turns this repo into a de-identification benchmarking tool.
-20. **HTML validation report** with per-column breakdown, suitable for compliance review artifacts.
-21. **JSON Schema validation** for FHIR output conformance.
+18. **NPI checksum + MRN checks.** ✅ CMS Luhn algorithm (`80840` prefix) in `synthgen/validators.py`; generators now emit checksum-**valid** NPIs that keep the safe 9-prefix (structurally plausible, no collision with issued 1-prefix numbers). Validator semantics: valid checksum + real-range prefix → **critical**; invalid checksum → data-quality warning; MRNs outside `MRN-224xxxx` → warning. Mirrored into the standalone validator.
+19. **De-id scoring harness.** ✅ `synthgen/deid.py` + `python -m synthgen deid` CLI: score ANY scrubber (`str -> str` callable, loaded from `module:function`, or the built-in regex baseline) against ground-truth PHI spans via text diffing. Reports span **recall**, **character-level precision** (blunt whole-document redaction scores low — by design), F1, per-PHI-type recall tables, collateral character counts, JSON + HTML reports. The baseline demonstrates the classic profile (~100% recall on structured identifiers, 0% on names) — the gap is finally measurable.
+20. **HTML validation report.** ✅ `validate_synthetic.py --html report.html` renders a self-contained compliance artifact (status banner, critical/warning/info tables, statistics, escaped content); `deid --html` produces the same style scoring report.
+21. **FHIR JSON Schema validation.** ✅ `synthgen/fhir_validate.py` + `python -m synthgen fhir-check` CLI: dependency-free structural R4 conformance (required elements per resource type, status enums, id/reference formats, ISO-8601 datetimes, base64 attachments, bundle dangling-reference detection) with precise error paths; automatically upgrades to official-schema validation when the optional `fhir.resources` package is installed. Negative tests verify it catches missing elements, bad enums, dangling refs, and malformed ids.
 
----
+**Post-phase-5 backlog (unscheduled):** DICOM-adjacent metadata, incremental/streaming generation, multi-language notes beyond Spanish, mypy + coverage gate, PyPI publish.
 
 ## Quick wins not yet scheduled (pick up anytime)
 

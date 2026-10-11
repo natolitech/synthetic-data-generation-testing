@@ -178,6 +178,15 @@ after integrity verification. Every run writes `manifest.json` (seed, row counts
 versions, locale, dirty flag) for reproducibility, plus
 `clinical_notes_ground_truth.json`.
 
+### Step D — Score de-identification & check FHIR (when relevant)
+
+When the developer is testing a de-identification pipeline, run their scrubber
+through the harness (`python -m synthgen deid --scrubber pkg:fn notes.csv`) or
+the built-in regex baseline, and report recall / character-level precision /
+F1 per PHI type. For FHIR output, run `python -m synthgen fhir-check` on the
+generated bundle — it catches missing required elements, invalid status enums,
+malformed ids/references, and dangling references.
+
 ### Step D — Deliver
 
 Tell the developer:

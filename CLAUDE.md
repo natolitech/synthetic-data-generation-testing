@@ -22,6 +22,8 @@ pip install -e ".[dev]"          # pytest + ruff, plus the `synthgen` console sc
 python -m synthgen notes -n 50 --validate
 python -m synthgen bundle -n 100 --format fhir
 python -m synthgen schema schema/ --rows 100 --manifest
+python -m synthgen deid --baseline synthetic_output/synthetic_clinical_notes.csv
+python -m synthgen fhir-check synthetic_output/synthetic_fhir_bundle.json
 
 # Legacy entry points still work (thin shims over synthgen)
 python clinical_notes.py -n 50 --validate --ground-truth
@@ -49,7 +51,9 @@ docker compose up   # demo on :8501, schema app on :8502
 | `synthgen/generators.py` | Semantic column mapping (`generate_value`), safe-range constants + helpers, `GENERATOR_REGISTRY` (~30 named generators for UI/CLI overrides), `null_rate`, `reconcile_age`, `describe_generator` |
 | `synthgen/tables.py` | `generate_table` (single table, with overrides) and `generate_all` (FK dependency order), edge-case name injection |
 | `synthgen/formatters.py` | CSV / JSON (with `_meta.synthetic` marker) / SQL INSERT serializers |
-| `synthgen/validators.py` | Inline PII/PHI `validate()` — SSN/email/phone ranges; reserved-TLD + subdomain-aware safe-email logic |
+| `synthgen/validators.py` | Inline PII/PHI `validate()` — SSN/email/phone ranges; reserved-TLD + subdomain-aware safe-email logic; **NPI Luhn checksum** (`npi_check_digit`/`is_valid_npi` — generators emit checksum-valid 9-prefix NPIs); MRN synthetic-range check |
+| `synthgen/deid.py` | De-identification scoring harness: diff-based `changed_regions()`, `score_scrubber()` with span recall + **character-level precision** (blunt redactions score low), per-PHI-type breakdown, built-in `regex_baseline`, JSON/HTML reports, CLI (`python -m synthgen deid`) |
+| `synthgen/fhir_validate.py` | Structural FHIR R4 conformance: required elements per resource, status enums, id/reference formats, ISO datetimes, base64 attachments, dangling-reference detection; optional deep validation when `fhir.resources` is installed |
 | `synthgen/notes.py` | 10 clinical note types (progress, H&P, discharge, ED, telehealth, procedure, radiology, behavioral-health w/ 42 CFR Part 2, portal message, call transcript), transcribed or raw-dictation rendering, **ground-truth PHI spans**; `make_context()`/`build_note()` composition API |
 | `synthgen/bundle.py` | Referentially-linked cohort (patients→encounters→diagnoses→medications→labs→notes), `check_integrity()`, condition-biased labs, locale packs (us/uk/ca/eu), `apply_dirty_mode()`, CLI |
 | `synthgen/fhir.py` | FHIR R4 serializers (Patient/Practitioner/Encounter/Condition/MedicationRequest/Observation/DocumentReference); combined bundle has zero dangling references |
@@ -86,7 +90,7 @@ Every generated identifier stays in reserved/fictional ranges:
 | IP | `192.0.2.x`, `198.51.100.x`, `203.0.113.x` (RFC 5737) |
 | Non-US national IDs | NULL (no universally safe range) |
 
-`tests/test_validator_invariant.py` enforces this on every push; never weaken it.
+`tests/test_validator_invariant.py` enforces this on every push; never weaken it. The standalone `validate_synthetic.py` adds NPI Luhn (valid-checksum + real-range 1-prefix = critical), MRN range checks, and `--html` compliance reports.
 
 ## Adding a New Domain, Note Type, or Format
 
