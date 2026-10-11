@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/USAGE.md` — task-oriented user recipes (read before changing CLI behavior)
 - `docs/GLOSSARY.md` — acronym & terminology reference; update when introducing new domain jargon or safe ranges
 - `docs/DESIGN.md` — architecture and decision log (D1–D12); add a decision record when making a significant architectural choice
+- `synth-data-gen/SKILL.md` — **canonical** skill definition (frontmatter drives auto-triggering; includes the install-and-invoke dev-cycle section). The root `SKILL.md` is a **generated mirror** — `make sync-skill` keeps it current and CI drift-gates it. Edit the canonical one, never the mirror.
 - `data-domains.md` / `format-templates.md` — field rules and output specs (mirrored into `synth-data-gen/references/`)
 - `PLAN.md` — roadmap and backlog
 

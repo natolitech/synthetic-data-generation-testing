@@ -112,6 +112,17 @@ def sync(check: bool) -> int:
             target.unlink()
             print(f"  removed stale copy: {name}")
 
+    # 5) root SKILL.md is a generated mirror of the canonical skill definition
+    #    (its YAML frontmatter is what skill loaders surface — keep it current)
+    canonical = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    root_skill = ROOT / "SKILL.md"
+    if check:
+        if not root_skill.exists() or root_skill.read_text(encoding="utf-8") != canonical:
+            drift.append("SKILL.md (root mirror out of date)")
+    else:
+        root_skill.write_text(canonical, encoding="utf-8")
+        print("  synced root SKILL.md mirror")
+
     if check:
         if drift:
             print("DRIFT DETECTED in skill copies:", ", ".join(drift))
