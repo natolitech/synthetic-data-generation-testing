@@ -21,6 +21,22 @@ All tools share the same safety guarantees and semantic column mapping. The Clau
 
 ---
 
+## Documentation
+
+| Doc | What it covers |
+|-----|----------------|
+| [docs/USAGE.md](docs/USAGE.md) | **Start here** — task-oriented recipes: seed a database, test a de-identification pipeline, build FHIR/HL7 fixtures, generate linked QA datasets; app guides; troubleshooting |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Every acronym (PHI, HIPAA, MRN, NPI, ICD-10, FHIR, HL7, ADT, LOINC…) and synthetic-data concept (safe ranges, ground-truth spans, dirty mode, recall/precision) explained |
+| [docs/DESIGN.md](docs/DESIGN.md) | Architecture and decision log: canonical package + generated skill copies, safety-by-construction, checksum-valid NPIs, character-level de-id precision, the validator invariant |
+| [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |
+| [data-domains.md](data-domains.md) | Field-level generation rules for all domains |
+| [format-templates.md](format-templates.md) | FHIR R4 / HL7 v2.x / SQL / CSV / JSON output specs |
+| [PLAN.md](PLAN.md) | Roadmap — Phases 1–5 delivered, backlog |
+| [INSTALL.md](INSTALL.md) | Installing the Claude Code skill |
+
+
+---
+
 ## Safety Guarantees
 
 Every generated identifier uses an officially reserved or fictional range — synthetic records can never collide with real people or systems.
@@ -479,6 +495,7 @@ synthetic-data-generation-testing/
 ├── scripts/sync_skill.py           # Generates the skill scripts (make sync-skill)
 ├── .github/workflows/ci.yml        # lint + tests + drift gate + CLI smoke (py3.11–3.14)
 │
+├── docs/                           # USAGE (recipes) · GLOSSARY (acronyms & terms) · DESIGN (decisions)
 ├── schema/example.sql              # Sample DDL (patients + encounters FK)
 ├── data-domains.md                 # Field-level rules for all domains + notes
 ├── format-templates.md             # FHIR R4 / HL7 v2.x / SQL / CSV / JSON specs
@@ -497,14 +514,15 @@ synthetic-data-generation-testing/
 | Check | What it flags |
 |-------|--------------|
 | **SSN** | Area codes 001–899 (real IRS assignments) |
-| **Email** | Known real domains (gmail.com, yahoo.com, outlook.com, etc.) |
-| **Phone** | Numbers outside the 555-01xx fictional range |
+| **Email** | Known real domains (gmail.com, yahoo.com, outlook.com, etc.); unrecognized non-reserved domains warn; reserved TLDs/subdomains (`*.example.com`, `.test`, `.invalid`) are safe |
+| **Phone** | Numbers outside the 555-01xx fictional range (region-aware for locale packs) |
 | **IP Address** | IPs outside RFC 5737 documentation and private ranges |
-| **NPI** | 10-digit numbers starting with 1 (potential real provider IDs) |
+| **NPI** | **Luhn checksum** (CMS 80840 algorithm): valid checksum + real-range 1-prefix → critical (potential real provider ID); invalid checksum → data-quality warning |
+| **MRN** | Values outside the synthetic `MRN-224xxxx` range |
 | **NULL distribution** | Warns if no NULLs found (real data always has gaps) |
 | **JSON quality** | Checks for `_meta.synthetic` marker |
 
-Results are grouped into three tiers: **CRITICAL** (do not use), **WARNING** (review), **INFO** (statistics).
+Results are grouped into three tiers: **CRITICAL** (do not use), **WARNING** (review), **INFO** (statistics). Add `--html report.html` for a self-contained compliance artifact.
 
 ---
 

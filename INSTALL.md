@@ -1,97 +1,90 @@
 # Synthetic Data Generator — Claude Code Skill
 
-## Deployment Instructions
+The `synth-data-gen/` directory is a self-contained Claude Code skill: install
+it once and Claude Code can generate synthetic test data whenever you ask.
 
-### Install the Skill
+> **Note:** the scripts inside `synth-data-gen/scripts/` are **generated** from
+> the canonical `synthgen/` package by `make sync-skill`. Never edit them by
+> hand — CI fails on drift.
 
-Copy the `synth-data-gen/` directory into your Claude Code skills folder:
+## Install the skill
 
 ```bash
-# If you have a project-level .claude/ directory:
+# Project-level (recommended — skill travels with the repo)
 cp -r synth-data-gen/ /path/to/your/project/.claude/skills/synth-data-gen/
 
-# Or for user-level skills:
+# Or user-level (available in all projects)
 cp -r synth-data-gen/ ~/.claude/skills/synth-data-gen/
+
+# Or from the repo root
+./run.sh install-skill
 ```
 
-### Python Dependencies
+## Python dependencies
 
-The generated scripts require these packages (devs install in their environment):
+The skill's scripts need `faker` and `pandas` in the target environment:
 
 ```bash
 pip install faker pandas
-# Optional, for Parquet output:
-pip install pyarrow
 ```
 
-### How Developers Use It
+## How developers use it
 
-Once installed, developers invoke the skill naturally in Claude Code:
+Once installed, invoke naturally in Claude Code:
 
 ```
 > I need test data for the patient demographics table
-
-> Generate 500 synthetic encounters with related diagnoses and labs in CSV
-
+> Generate 500 synthetic encounters with related diagnoses, meds, and labs in CSV
 > Create a FHIR Patient bundle with 50 records for our API mock server
-
-> I need fake Active Directory user accounts with group memberships for testing SailPoint
-
-> Build me a Python script that generates synthetic student enrollment data I can run repeatedly
-
-> Generate synthetic data to populate our database from the schema/ directory
+> Populate our test database from the schema/ directory
+> Generate 200 doctor's notes as raw dictation transcripts with PHI annotations
+> Score our de-identification service against annotated synthetic notes
 ```
 
 The skill will:
-1. Check for a `schema/` directory and auto-detect tables if one exists
-2. If no schema is present, ask clarifying questions about domain, volume, and format
-3. Consult domain-specific rules for realistic value generation
-4. Generate data or run `generate_from_schema.py` directly
-5. Run validation to check for accidental PII/PHI leakage
-6. Deliver with a clear "all data is synthetic" attestation
+1. Auto-detect a `schema/` directory (`schema/`, `db/schema/`, `migrations/`, `ddl/`, `sql/`) and run schema-driven generation if present
+2. Otherwise ask about domain, volume, format — or generate clinical notes / linked bundles for unstructured-PHI needs
+3. Generate data with every identifier in reserved/fictional ranges (SSN `987-65-xxxx`, phones `555-01xx`, RFC 2606 emails, Luhn-valid 9-prefix NPIs)
+4. Run PII/PHI validation before delivery (`0=pass 1=warnings 2=critical`)
+5. Deliver with a clear "all data is synthetic" attestation, plus `manifest.json` for reproducibility
 
-### Schema-Driven Generation (CLI)
-
-If your project has a `schema/` directory, the skill can generate data directly:
-
-```bash
-# See what tables are in your schema
-python scripts/generate_from_schema.py schema/ --list-tables
-
-# Generate 100 rows per table as CSV
-python scripts/generate_from_schema.py schema/
-
-# Generate 500 rows, SQL INSERT format, with validation
-python scripts/generate_from_schema.py schema/ --rows 500 --format sql --validate --output ./seed_data/
-```
-
-### What's Included
+## What's included
 
 ```
 synth-data-gen/
-├── SKILL.md                              # Main skill instructions
+├── SKILL.md                          # Behavioral instructions for Claude
 ├── references/
-│   ├── data-domains.md                   # Field rules for clinical, student, IAM, HR, research, financial
-│   └── format-templates.md               # FHIR, HL7, SQL, CSV, JSON, Parquet templates
-├── scripts/
-│   ├── generate_from_schema.py           # Schema-driven generator (reads DDL, outputs synthetic data)
-│   ├── validate_synthetic.py             # Checks output for real-world data leakage
-│   └── example_patient_generator.py      # Working example generator
-└── assets/                               # (reserved for future templates)
+│   ├── data-domains.md               # Field-level rules for all domains + notes
+│   └── format-templates.md           # FHIR R4 / HL7 v2.x / SQL / CSV / JSON specs
+└── scripts/                          # GENERATED — do not edit (make sync-skill)
+    ├── synthgen/                     # The full package copy (self-contained)
+    ├── generate_from_schema.py       # Schema-driven CLI (shim → synthgen.schema_cli)
+    ├── clinical_notes.py             # Notes & dictations CLI (shim → synthgen.notes)
+    ├── clinical_bundle.py            # Linked cohort CLI (shim → synthgen.bundle)
+    ├── validate_synthetic.py         # Standalone PII/PHI validator
+    └── example_patient_generator.py  # Minimal reference generator
 ```
 
-### Validation
+Because the package ships inside the skill, every CLI works from any directory
+with no repo checkout — including `python -m synthgen deid` (de-id scoring) and
+`python -m synthgen fhir-check` (FHIR conformance).
 
-The included validator catches common mistakes:
+## Validation
 
 ```bash
-python scripts/validate_synthetic.py output_file.csv
+python scripts/validate_synthetic.py output_dir/
 ```
 
-It checks for:
-- SSNs in real-world ranges (should be 987-65-xxxx or 900-999)
-- Real email domains (should be @example.com or @test.invalid)
-- Phone numbers outside the 555-01xx safe range
-- IP addresses outside RFC 5737 documentation ranges
-- Potential real NPI numbers
-- Missing NULL distributions (real data always has gaps)
+It checks SSN ranges, real email domains, phone ranges, RFC 5737 IP ranges,
+**NPI Luhn checksums** (valid checksum + real-range prefix = critical), MRN
+synthetic range, NULL distribution, and JSON synthetic markers. Add
+`--html report.html` for a self-contained compliance artifact.
+
+Exit codes: `0` pass · `1` warnings · `2` critical — do not use.
+
+## Further reading
+
+- [../docs/USAGE.md](docs/USAGE.md) — task-oriented recipes (seeding, de-id scoring, FHIR fixtures)
+- [../docs/GLOSSARY.md](docs/GLOSSARY.md) — every acronym and synthetic-data term explained
+- [../docs/DESIGN.md](docs/DESIGN.md) — architecture and decision rationale
+- [../README.md](README.md) — full project documentation

@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation map
+
+- `docs/USAGE.md` — task-oriented user recipes (read before changing CLI behavior)
+- `docs/GLOSSARY.md` — acronym & terminology reference; update when introducing new domain jargon or safe ranges
+- `docs/DESIGN.md` — architecture and decision log (D1–D12); add a decision record when making a significant architectural choice
+- `data-domains.md` / `format-templates.md` — field rules and output specs (mirrored into `synth-data-gen/references/`)
+- `PLAN.md` — roadmap and backlog
+
 ## Commands
 
 ```bash
